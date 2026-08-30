@@ -1,0 +1,28 @@
+THIRD-PARTY SOFTWARE NOTICES
+
+The root 0BSD license applies only to original work in this repository.
+Third-party material remains under its original license.
+
+Android TV Remote protocol schemas
+----------------------------------
+The schemas in android/app/src/main/proto were vendored from
+tronikos/androidtvremote2 at revision
+e67a1e10335ac0a7e502341f96a82580eed191ab under Apache License 2.0.
+Their headers retain earlier Android Open Source Project and
+louis49/androidtv-remote provenance. The louis49 project is MIT licensed.
+
+AndroidTVRemoteControl
+----------------------
+The iOS library in ios/Vendor/AndroidTVRemoteControl was vendored from
+odyshewroman/AndroidTVRemoteControl at revision
+32393c3d672c285c4acbd1d42d6873e9b9a523e2 under the MIT License.
+Its license is retained at ios/Vendor/AndroidTVRemoteControl/LICENSE.md.
+
+Package dependencies
+--------------------
+The applications also use open-source packages including AndroidX, Kotlin,
+Kotlin Coroutines, Protocol Buffers, Swift Certificates, Swift Protobuf, and
+their transitive dependencies. These packages retain their upstream licenses.
+
+The full commonly applicable Apache 2.0, MIT, and Protocol Buffers BSD license
+texts are collected in THIRD_PARTY_LICENSES and distributed with releases.

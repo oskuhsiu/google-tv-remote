@@ -1,0 +1,109 @@
+name: Android release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions: {}
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Java
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+          cache-dependency-path: android/**/*.gradle*
+
+      - name: Validate release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tags must look like v1.2.3" >&2
+            exit 1
+          fi
+          version_name="$(sed -nE 's/^[[:space:]]*versionName = "([^"]+)"/\1/p' android/app/build.gradle.kts)"
+          if [[ "$RELEASE_TAG" != "v$version_name" ]]; then
+            echo "Tag $RELEASE_TAG does not match Android version $version_name" >&2
+            exit 1
+          fi
+
+      - name: Test and build signed APK
+        working-directory: android
+        run: ./gradlew test assembleRelease --no-daemon
+
+      - name: Verify signer and prepare assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="android/app/build/outputs/apk/release/app-release.apk"
+          apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "$apksigner"
+
+          verification="$($apksigner verify --verbose --print-certs "$apk")"
+          printf '%s\n' "$verification"
+          actual="$(printf '%s\n' "$verification" | sed -n 's/^.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
+          expected="$(tr -d ':[:space:]' < android/signing/public-release.sha256 | tr '[:lower:]' '[:upper:]')"
+          if [[ -z "$actual" || "$actual" != "$expected" ]]; then
+            echo "APK signer fingerprint does not match the public release key" >&2
+            exit 1
+          fi
+
+          release_dir="$RUNNER_TEMP/release-assets"
+          apk_name="google-tv-remote-$RELEASE_TAG.apk"
+          mkdir -p "$release_dir"
+          cp "$apk" "$release_dir/$apk_name"
+          cp LICENSE THIRD_PARTY_NOTICES THIRD_PARTY_LICENSES "$release_dir/"
+          (cd "$release_dir" && sha256sum "$apk_name" > "$apk_name.sha256")
+
+      - name: Store verified release assets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-release-assets
+          path: ${{ runner.temp }}/release-assets/
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - name: Download verified assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: android-release-assets
+          path: release-assets
+
+      - name: Create GitHub release
+        run: >-
+          gh release create "$RELEASE_TAG" release-assets/*
+          --repo "$GITHUB_REPOSITORY"
+          --verify-tag
+          --generate-notes
+          --title "Google TV Remote $RELEASE_TAG"

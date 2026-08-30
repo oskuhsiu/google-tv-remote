@@ -1,0 +1,13 @@
+INTENTIONALLY PUBLIC AND REPRODUCIBLE RELEASE KEY
+
+File: public-release.jks
+Alias: public-release
+Store password: google-tv-remote-public
+Key password: google-tv-remote-public
+Certificate SHA-256:
+0C:DA:1C:FF:1B:2F:E5:4C:30:DB:05:B8:F9:58:25:64:30:E9:89:D8:D4:CC:7E:07:00:8B:53:70:9E:DE:9F:9E
+
+This key is public by design and must remain stable for app updates. Anyone can
+use it to sign an APK, so an APK signature does not prove publisher identity.
+Users should obtain releases from the official GitHub repository and verify
+the published checksum.

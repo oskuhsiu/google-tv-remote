@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TV Remote</string>
+    <string name="device_intro">Connect your phone and TV to the same Wi-Fi network.</string>
+    <string name="nearby_tvs">Nearby TVs</string>
+    <string name="looking_for_tvs">Looking for TVs…</string>
+    <string name="discovery_hint">Listening for Android TV Remote broadcasts on this network</string>
+    <string name="last_tv">Last TV</string>
+    <string name="ready_to_reconnect">Ready to reconnect without pairing again</string>
+    <string name="manual_ip">Manual IP</string>
+    <string name="tv_ip_address">TV IP address</string>
+    <string name="manual_ip_hint">Use the address shown in your TV network settings.</string>
+    <string name="connect">Connect</string>
+    <string name="forget">Forget</string>
+    <string name="connecting_to">Connecting to %1$s…</string>
+    <string name="pair_tv">Pair TV</string>
+    <string name="pairing_instructions">Enter the six-character code shown on the TV.</string>
+    <string name="pairing_code">Pairing code</string>
+    <string name="six_hex_characters">Six hexadecimal characters</string>
+    <string name="pair">Pair</string>
+    <string name="cancel">Cancel</string>
+    <string name="connected">Connected</string>
+    <string name="reconnecting">Reconnecting…</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="remote_controls">Remote controls</string>
+    <string name="up">Up</string>
+    <string name="down">Down</string>
+    <string name="left">Left</string>
+    <string name="right">Right</string>
+    <string name="select">Select</string>
+    <string name="ok">OK</string>
+    <string name="back">Back</string>
+    <string name="home">Home</string>
+    <string name="menu">Menu</string>
+    <string name="power">Power</string>
+    <string name="volume_down">Volume down</string>
+    <string name="mute">Mute</string>
+    <string name="volume_up">Volume up</string>
+
+    <string name="error_network_unreachable">Could not reach the TV. Check Wi-Fi and the IP address, then retry.</string>
+    <string name="error_tv_not_found">Enter a valid TV address and make sure the TV is online.</string>
+    <string name="error_pairing_required">Pair with the TV before sending commands.</string>
+    <string name="error_pairing_code_invalid">Enter all six hexadecimal characters from the TV.</string>
+    <string name="error_pairing_rejected">The TV rejected the code. Start pairing again and enter the new code.</string>
+    <string name="error_pairing_timeout">Pairing timed out. Connect again to request a new code.</string>
+    <string name="error_trust_changed">The TV identity changed. Forget this TV before pairing again.</string>
+    <string name="error_connection_lost">Connection lost. Reconnect to continue.</string>
+    <string name="error_voice_permission_denied">Microphone access is required for voice control.</string>
+    <string name="error_voice_session_failed">Voice control failed. The remote is still connected.</string>
+    <string name="error_text_input_failed">The TV is not ready for text input.</string>
+    <string name="error_unknown">Something went wrong. Retry the connection.</string>
+</resources>
