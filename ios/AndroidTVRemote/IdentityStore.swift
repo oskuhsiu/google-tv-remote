@@ -6,12 +6,8 @@ import X509
 struct ClientIdentity {
     let identity: SecIdentity
     let certificate: SecCertificate
-    let privateKey: SecKey
+    let publicKey: SecKey
     let fingerprint: String
-
-    var publicKey: SecKey {
-        SecKeyCopyPublicKey(privateKey)!
-    }
 
     var tlsImportItems: CFArray {
         [[kSecImportItemIdentity as String: identity]] as CFArray
@@ -43,7 +39,7 @@ final class IdentityStore {
             return ClientIdentity(
                 identity: identity,
                 certificate: certificate,
-                privateKey: key,
+                publicKey: SecKeyCopyPublicKey(key)!,
                 fingerprint: CertificateFingerprint.sha256(certificate)
             )
         }
@@ -64,7 +60,7 @@ final class IdentityStore {
         return ClientIdentity(
             identity: identity,
             certificate: certificate,
-            privateKey: key,
+            publicKey: SecKeyCopyPublicKey(key)!,
             fingerprint: CertificateFingerprint.sha256(certificate)
         )
     }
@@ -117,7 +113,7 @@ final class IdentityStore {
             return ClientIdentity(
                 identity: identity,
                 certificate: certificate,
-                privateKey: privateKey,
+                publicKey: SecKeyCopyPublicKey(privateKey)!,
                 fingerprint: CertificateFingerprint.sha256(certificate)
             )
         } catch {

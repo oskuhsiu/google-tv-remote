@@ -3,6 +3,7 @@ import Foundation
 enum FrameDecoderError: Error, Equatable {
     case malformedLength
     case frameTooLarge(Int)
+    case truncatedFrame(Int)
 }
 
 struct FrameDecoder {
@@ -49,6 +50,14 @@ struct FrameDecoder {
     mutating func reset() {
         buffer.removeAll(keepingCapacity: false)
         bufferedByteCount = 0
+    }
+
+    mutating func finish() throws {
+        guard buffer.isEmpty else {
+            let remaining = buffer.count
+            reset()
+            throw FrameDecoderError.truncatedFrame(remaining)
+        }
     }
 
     private func decodedLengthPrefix() throws -> (length: Int, byteCount: Int)? {

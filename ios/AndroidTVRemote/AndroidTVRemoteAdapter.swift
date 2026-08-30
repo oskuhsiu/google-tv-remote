@@ -13,17 +13,28 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
     private var trustGate: PeerTrustGate?
     private var connectingDevice: RemoteDevice?
     private var didReachConnectedState = false
+    private var sessionGeneration = 0
+    private var sendTail: Task<Void, Never>?
 
     init(identityStore: IdentityStore) {
         self.identityStore = identityStore
     }
 
-    func connect(to device: RemoteDevice) {
+    func connect(to record: LastTvRecord) {
+        let device = record.device
+        guard record.isComplete else {
+            onEvent?(.failed(device, reason: .trustChanged, recoverable: false))
+            return
+        }
         disconnect()
 
         do {
-            let identity = try identityStore.loadOrCreate()
-            let gate = PeerTrustGate(expectedFingerprint: device.id)
+            guard let identity = try identityStore.load(),
+                  identity.fingerprint == record.clientIdentityFingerprint else {
+                onEvent?(.failed(device, reason: .trustChanged, recoverable: false))
+                return
+            }
+            let gate = PeerTrustGate(expectedFingerprint: record.remotePeerFingerprint)
             let tlsManager = TLSManager { .Result(identity.tlsImportItems) }
             tlsManager.secTrustClosure = { trust in
                 gate.evaluate(trust)
@@ -60,6 +71,9 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
     }
 
     func disconnect() {
+        sessionGeneration &+= 1
+        sendTail?.cancel()
+        sendTail = nil
         remoteManager?.stateChanged = nil
         remoteManager?.frameReceived = nil
         remoteManager?.receiveData = nil
@@ -71,18 +85,21 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
         guard command.supports(action), let writer else { return }
         do {
             let payload = try RemotePayloadFactory.key(command: command, action: action)
-            Task {
+            let generation = sessionGeneration
+            let previous = sendTail
+            let task = Task { [weak self] in
+                if let previous { await previous.value }
+                guard !Task.isCancelled else { return }
                 do {
                     try await writer.send(payload: payload)
                 } catch {
-                    await MainActor.run { [weak self] in
-                        guard let self else { return }
-                        self.onEvent?(
-                            .failed(self.connectingDevice, reason: .connectionLost, recoverable: true)
-                        )
-                    }
+                    guard let self, self.sessionGeneration == generation else { return }
+                    self.onEvent?(
+                        .failed(self.connectingDevice, reason: .connectionLost, recoverable: true)
+                    )
                 }
             }
+            sendTail = task
         } catch {
             onEvent?(.failed(connectingDevice, reason: .unknown, recoverable: true))
         }
@@ -103,8 +120,9 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
             didReachConnectedState = true
             onEvent?(.connected(device))
 
-        case .error:
+        case .error(let error):
             let result = AdapterErrorPolicy.failure(
+                error: error,
                 for: gate.outcome,
                 device: device,
                 wasConnected: didReachConnectedState
@@ -214,6 +232,7 @@ final class PeerTrustGate: @unchecked Sendable {
 
 enum AdapterErrorPolicy {
     static func failure(
+        error: AndroidTVRemoteControlError,
         for outcome: PeerTrustOutcome,
         device: RemoteDevice,
         wasConnected: Bool = false
@@ -221,14 +240,38 @@ enum AdapterErrorPolicy {
         switch outcome {
         case .changed:
             return .failed(device, reason: .trustChanged, recoverable: false)
-        case .accepted:
+        case .accepted, .notEvaluated, .missingCertificate:
+            break
+        }
+
+        switch error {
+        case .connectionFailed, .connectionWaitingError:
+            if wasConnected {
+                return .failed(device, reason: .connectionLost, recoverable: true)
+            }
+            return .failed(device, reason: .networkUnreachable, recoverable: true)
+
+        case .receiveDataError, .sendDataError, .connectionCanceled, .connectionClosed:
             return .failed(
                 device,
-                reason: wasConnected ? .connectionLost : .pairingRequired,
+                reason: wasConnected ? .connectionLost : .networkUnreachable,
                 recoverable: true
             )
-        case .notEvaluated, .missingCertificate:
-            return .failed(device, reason: .networkUnreachable, recoverable: true)
+
+        case .invalidFrame:
+            return .failed(device, reason: .unknown, recoverable: true)
+
+        case .unexpectedCertData, .extractCFTypeRefError, .secIdentityCreateError,
+             .toLongNames, .pairingNotSuccess, .optionNotSuccess,
+             .configurationNotSuccess, .secretNotSuccess, .invalidCode,
+             .wrongCode, .noSecAttributes, .notRSAKey, .notPublicKey,
+             .noKeySizeAttribute, .noValueData, .invalidCertData,
+             .createCertFromDataError, .noClientPublicCertificate,
+             .noServerPublicCertificate, .secTrustCopyKeyError,
+             .loadCertFromURLError, .secPKCS12ImportNotSuccess,
+             .createTrustObjectError, .secTrustCreateWithCertificatesNotSuccess:
+            return .failed(device, reason: .unknown, recoverable: false)
         }
     }
+
 }

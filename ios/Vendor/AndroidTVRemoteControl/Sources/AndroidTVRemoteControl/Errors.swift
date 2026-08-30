@@ -16,6 +16,7 @@ public enum AndroidTVRemoteControlError {
     // Connecting Errors
     case toLongNames(description: String)
     case connectionCanceled
+    case connectionClosed
     case pairingNotSuccess(Data)
     case optionNotSuccess(Data)
     case configurationNotSuccess(Data)
@@ -60,6 +61,8 @@ extension AndroidTVRemoteControlError: Error {
             return "Connection Error: To Long Names - " + description
         case .connectionCanceled:
             return "Connection Error: connection was canceled"
+        case .connectionClosed:
+            return "Connection Error: peer closed the connection"
         case .pairingNotSuccess:
             return "Connection Error: Pairing Not Success"
         case .optionNotSuccess:

@@ -31,6 +31,15 @@ final class ProtocolAdapterTests: XCTestCase {
         XCTAssertEqual(try decoder.append(stream), [first, second])
     }
 
+    func testFrameDecoderAcceptsTwentyKiBBoundaryPayload() throws {
+        let payload = Data(repeating: 0x5a, count: 20 * 1_024)
+        let framed = FrameEncoder.frame(payload)
+        var decoder = FrameDecoder()
+
+        XCTAssertEqual(try decoder.append(Data(framed.prefix(2))), [])
+        XCTAssertEqual(try decoder.append(Data(framed.dropFirst(2))), [payload])
+    }
+
     func testFrameDecoderRejectsMalformedVarintAndRecoversAfterReset() throws {
         var decoder = FrameDecoder()
         XCTAssertThrowsError(try decoder.append(Data(repeating: 0x80, count: 5))) { error in
@@ -48,6 +57,15 @@ final class ProtocolAdapterTests: XCTestCase {
             XCTAssertEqual(error as? FrameDecoderError, .frameTooLarge(5))
         }
         XCTAssertEqual(decoder.bufferedByteCount, 0)
+    }
+
+    func testFrameDecoderRejectsTruncatedFrameAtEOF() throws {
+        var decoder = FrameDecoder()
+        XCTAssertEqual(try decoder.append(Data([0x03, 0xaa])), [])
+        XCTAssertThrowsError(try decoder.finish()) { error in
+            XCTAssertEqual(error as? FrameDecoderError, .truncatedFrame(2))
+        }
+        XCTAssertNoThrow(try decoder.finish())
     }
 
     func testOutboundWriterSendsEachCompleteFrameAtomically() async throws {
@@ -96,17 +114,23 @@ final class ProtocolAdapterTests: XCTestCase {
         let device = RemoteDevice(id: "abc", name: "TV", host: "192.0.2.1", locator: nil)
         XCTAssertEqual(
             AdapterErrorPolicy.failure(
+                error: .connectionCanceled,
                 for: .changed(expected: "abc", actual: "def"),
                 device: device
             ),
             .failed(device, reason: .trustChanged, recoverable: false)
         )
         XCTAssertEqual(
-            AdapterErrorPolicy.failure(for: .notEvaluated, device: device),
+            AdapterErrorPolicy.failure(
+                error: .connectionCanceled,
+                for: .notEvaluated,
+                device: device
+            ),
             .failed(device, reason: .networkUnreachable, recoverable: true)
         )
         XCTAssertEqual(
             AdapterErrorPolicy.failure(
+                error: .connectionClosed,
                 for: .accepted("abc"),
                 device: device,
                 wasConnected: true
@@ -124,7 +148,7 @@ final class ProtocolAdapterTests: XCTestCase {
         let loaded = try XCTUnwrap(store.load())
 
         XCTAssertEqual(created.fingerprint, loaded.fingerprint)
-        XCTAssertTrue(store.hasMatchingIdentity(fingerprint: created.fingerprint))
+        XCTAssertEqual(try store.status(matching: created.fingerprint), .matches)
         XCTAssertEqual(created.fingerprint.count, 64)
         XCTAssertEqual(CFGetTypeID(created.identity), SecIdentityGetTypeID())
         XCTAssertEqual(CFGetTypeID(created.publicKey), SecKeyGetTypeID())
@@ -133,8 +157,6 @@ final class ProtocolAdapterTests: XCTestCase {
         let importedIdentity = try XCTUnwrap(importItems.first?[kSecImportItemIdentity as String])
         XCTAssertEqual(CFGetTypeID(importedIdentity as CFTypeRef), SecIdentityGetTypeID())
 
-        let attributes = try XCTUnwrap(SecKeyCopyAttributes(created.privateKey) as? [String: Any])
-        XCTAssertEqual(attributes[kSecAttrIsExtractable as String] as? Bool, false)
     }
 }
 

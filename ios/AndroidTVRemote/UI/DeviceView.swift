@@ -15,6 +15,7 @@ struct DeviceView: View {
                 Button("Connect") {
                     model.connectRemembered()
                 }
+                .disabled(!model.canConnectRemembered)
                 Button("Forget TV", role: .destructive) {
                     model.forget()
                 }

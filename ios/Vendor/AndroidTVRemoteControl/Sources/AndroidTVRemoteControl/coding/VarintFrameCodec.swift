@@ -3,6 +3,7 @@ import Foundation
 enum VarintFrameDecoderError: Error, Equatable {
     case malformedLength
     case frameTooLarge(Int)
+    case truncatedFrame(Int)
 }
 
 final class VarintFrameDecoder {
@@ -41,6 +42,14 @@ final class VarintFrameDecoder {
 
     func reset() {
         buffer.removeAll(keepingCapacity: false)
+    }
+
+    func finish() throws {
+        guard buffer.isEmpty else {
+            let remaining = buffer.count
+            reset()
+            throw VarintFrameDecoderError.truncatedFrame(remaining)
+        }
     }
 
     private func decodeLengthPrefix() throws -> (length: Int, byteCount: Int)? {

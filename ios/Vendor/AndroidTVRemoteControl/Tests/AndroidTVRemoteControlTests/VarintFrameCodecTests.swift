@@ -57,6 +57,16 @@ final class VarintFrameCodecTests: XCTestCase {
         XCTAssertEqual(framed, Data([0x04, 0xde, 0xad, 0xbe, 0xef]))
         XCTAssertEqual(try VarintFrameDecoder().append(framed), [payload])
     }
+
+    func testFinishRejectsTruncatedFrameAndResetsDecoder() throws {
+        let decoder = VarintFrameDecoder()
+        XCTAssertEqual(try decoder.append(Data([0x03, 0xaa])), [])
+
+        XCTAssertThrowsError(try decoder.finish()) { error in
+            XCTAssertEqual(error as? VarintFrameDecoderError, .truncatedFrame(2))
+        }
+        XCTAssertNoThrow(try decoder.finish())
+    }
 }
 
 final class TLSManagerTests: XCTestCase {

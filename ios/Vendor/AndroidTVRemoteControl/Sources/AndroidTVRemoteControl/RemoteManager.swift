@@ -12,19 +12,33 @@ public class RemoteManager {
     private let stateQueue = DispatchQueue(label: "remote.state")
     private let remoteQueue = DispatchQueue(label: "remote.connect")
     private let receiveQueue = DispatchQueue(label: "remote.receive")
+    private let callbackLock = NSLock()
     
     private var connection: NWConnection?
     private let tlsManager: TLSManager
     private let frameDecoder = VarintFrameDecoder()
     private var secondConfigurationResponse = SecondConfigurationResponse()
     
-    public var stateChanged: ((RemoteState)->())?
-    public var receiveData: ((Data?, Error?)->Void)?
+    private var stateChangedStorage: ((RemoteState)->())?
+    private var receiveDataStorage: ((Data?, Error?)->Void)?
+    private var frameReceivedStorage: ((Data)->Void)?
+
+    public var stateChanged: ((RemoteState)->())? {
+        get { withCallbackLock { stateChangedStorage } }
+        set { withCallbackLock { stateChangedStorage = newValue } }
+    }
+    public var receiveData: ((Data?, Error?)->Void)? {
+        get { withCallbackLock { receiveDataStorage } }
+        set { withCallbackLock { receiveDataStorage = newValue } }
+    }
     /// Called once for each complete length-delimited protobuf payload.
-    public var frameReceived: ((Data)->Void)?
-    public var deviceInfo: CommandNetwork.DeviceInfo
+    public var frameReceived: ((Data)->Void)? {
+        get { withCallbackLock { frameReceivedStorage } }
+        set { withCallbackLock { frameReceivedStorage = newValue } }
+    }
+    public let deviceInfo: CommandNetwork.DeviceInfo
     
-    public var logger: Logger?
+    public let logger: Logger?
     private let logPrefix = "Remote: "
     
     private var remoteState: RemoteState = .idle {
@@ -65,6 +79,12 @@ public class RemoteManager {
     }
     
     public func connect(_ host: String, timeout: Int = 60) {
+        remoteQueue.async { [weak self] in
+            self?.connectOnQueue(host, timeout: timeout)
+        }
+    }
+
+    private func connectOnQueue(_ host: String, timeout: Int) {
         if host.isEmpty {
             logger?.errorLog(logPrefix + "host shouldn't be empty!")
         }
@@ -92,6 +112,12 @@ public class RemoteManager {
     }
     
     public func disconnect() {
+        remoteQueue.async { [weak self] in
+            self?.disconnectOnQueue()
+        }
+    }
+
+    private func disconnectOnQueue() {
         logger?.infoLog(logPrefix + "disconnect")
         connection?.stateUpdateHandler = nil
         connection?.cancel()
@@ -158,7 +184,9 @@ public class RemoteManager {
             }
             
             guard let data = data, !data.isEmpty else {
-                if !isComplete {
+                if isComplete {
+                    self.handlePeerClosure()
+                } else {
                     self.receive()
                 }
                 return
@@ -175,10 +203,28 @@ public class RemoteManager {
                 return
             }
 
-            if !isComplete {
+            if isComplete {
+                self.handlePeerClosure()
+            } else {
                 self.receive()
             }
         }
+    }
+
+    private func handlePeerClosure() {
+        do {
+            try frameDecoder.finish()
+            remoteState = .error(.connectionClosed)
+        } catch {
+            remoteState = .error(.invalidFrame(error))
+        }
+        disconnect()
+    }
+
+    private func withCallbackLock<T>(_ body: () -> T) -> T {
+        callbackLock.lock()
+        defer { callbackLock.unlock() }
+        return body()
     }
     
     private func handleFrame(_ data: Data) {

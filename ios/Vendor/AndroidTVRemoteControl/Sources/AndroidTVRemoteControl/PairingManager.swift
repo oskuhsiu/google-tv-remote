@@ -12,13 +12,14 @@ import CryptoKit
 public class PairingManager {
     private let stateQueue = DispatchQueue(label: "pairing.state")
     private let connectQueue = DispatchQueue(label: "pairing.connect")
+    private let callbackLock = NSLock()
     
     private var pairingResponse = PairingNetwork.PairingResponse()
     private var optionResponse = PairingNetwork.OptionResponse()
     private var configResponse = PairingNetwork.ConfigurationResponse()
     
     private var connection: NWConnection?
-    private var cryptoManager: CryptoManager
+    private let cryptoManager: CryptoManager
     private let tlsManager: TLSManager
     private let frameDecoder = VarintFrameDecoder()
     
@@ -26,12 +27,21 @@ public class PairingManager {
     private var serviceName = "service"
     private var code: String = ""
     
-    public var logger: Logger?
+    public let logger: Logger?
     private let logPrefix = "Pairing: "
     
-    public var stateChanged: ((PairingState)->())?
+    private var stateChangedStorage: ((PairingState)->())?
+    private var frameReceivedStorage: ((Data)->Void)?
+
+    public var stateChanged: ((PairingState)->())? {
+        get { withCallbackLock { stateChangedStorage } }
+        set { withCallbackLock { stateChangedStorage = newValue } }
+    }
     /// Called once for each complete length-delimited protobuf payload.
-    public var frameReceived: ((Data)->Void)?
+    public var frameReceived: ((Data)->Void)? {
+        get { withCallbackLock { frameReceivedStorage } }
+        set { withCallbackLock { frameReceivedStorage = newValue } }
+    }
     
     private var pairingState: PairingState = .idle {
         didSet {
@@ -83,6 +93,17 @@ public class PairingManager {
     }
     
     public func connect(_ host: String, _ clientName: String, _ serviceName: String, timeout: Int = 60) {
+        connectQueue.async { [weak self] in
+            self?.connectOnQueue(host, clientName, serviceName, timeout: timeout)
+        }
+    }
+
+    private func connectOnQueue(
+        _ host: String,
+        _ clientName: String,
+        _ serviceName: String,
+        timeout: Int
+    ) {
         if host.isEmpty {
             logger?.errorLog(logPrefix + "host shouldn't be empty!")
         }
@@ -114,6 +135,12 @@ public class PairingManager {
     }
     
     public func disconnect() {
+        connectQueue.async { [weak self] in
+            self?.disconnectOnQueue()
+        }
+    }
+
+    private func disconnectOnQueue() {
         logger?.infoLog(logPrefix + "disconnect")
         connection?.stateUpdateHandler = nil
         connection?.cancel()
@@ -121,6 +148,12 @@ public class PairingManager {
     }
     
     public func sendSecret(_ code: String) {
+        connectQueue.async { [weak self] in
+            self?.sendSecretOnQueue(code)
+        }
+    }
+
+    private func sendSecretOnQueue(_ code: String) {
         // Set the code for secret transmission
         self.code = code
         let secret: [UInt8]
@@ -178,7 +211,9 @@ public class PairingManager {
             }
             
             guard let data = data, !data.isEmpty else {
-                if !isComplete {
+                if isComplete {
+                    self.handlePeerClosure()
+                } else {
                     self.receive()
                 }
                 return
@@ -195,10 +230,28 @@ public class PairingManager {
                 return
             }
 
-            if !isComplete && self.shouldContinueReceiving {
+            if isComplete {
+                self.handlePeerClosure()
+            } else if self.shouldContinueReceiving {
                 self.receive()
             }
         }
+    }
+
+    private func handlePeerClosure() {
+        do {
+            try frameDecoder.finish()
+            pairingState = .error(.connectionClosed)
+        } catch {
+            pairingState = .error(.invalidFrame(error))
+        }
+        disconnect()
+    }
+
+    private func withCallbackLock<T>(_ body: () -> T) -> T {
+        callbackLock.lock()
+        defer { callbackLock.unlock() }
+        return body()
     }
 
     private var shouldContinueReceiving: Bool {
