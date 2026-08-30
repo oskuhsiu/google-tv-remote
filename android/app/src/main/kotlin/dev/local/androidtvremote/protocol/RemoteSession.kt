@@ -17,10 +17,13 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import remote.Remotemessage.RemoteConfigure
 import remote.Remotemessage.RemoteDeviceInfo
 import remote.Remotemessage.RemoteMessage
@@ -127,7 +130,17 @@ class RemoteSession private constructor(
     }
 
     private suspend fun readMessage(): RemoteMessage? = withContext(Dispatchers.IO) {
-        frameReader.read(input)?.let(RemoteMessage::parseFrom)
+        suspendCancellableCoroutine { continuation ->
+            continuation.invokeOnCancellation {
+                runCatching { connection.socket.close() }
+            }
+            try {
+                val message = frameReader.read(input)?.let(RemoteMessage::parseFrom)
+                if (continuation.isActive) continuation.resume(message)
+            } catch (error: Throwable) {
+                if (continuation.isActive) continuation.resumeWithException(error)
+            }
+        }
     }
 
     suspend fun close() {
@@ -179,16 +192,14 @@ class RemoteSession private constructor(
             scope: CoroutineScope,
             onLost: (Throwable?) -> Unit,
         ): RemoteSession {
-            val connection = withContext(Dispatchers.IO) {
-                tlsClient.connectRemote(host, expectedFingerprint)
-            }
+            val connection = tlsClient.connectRemote(host, expectedFingerprint)
             val session = RemoteSession(connection, scope, onLost, DelimitedFrameReader())
             return try {
                 session.handshake()
                 session.startReader()
                 session
             } catch (error: Throwable) {
-                session.close()
+                session.closeNow()
                 throw error
             }
         }

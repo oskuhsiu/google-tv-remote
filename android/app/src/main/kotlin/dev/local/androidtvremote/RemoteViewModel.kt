@@ -4,7 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.async
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,10 +13,12 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 class RemoteViewModel(application: Application) : AndroidViewModel(application) {
-    private val controller: RemoteController = AndroidRemoteController(application, viewModelScope)
+    private val runtime = (application as RemoteApplication).remoteRuntime
+    private val controller: RemoteController = runtime.controller
 
     val remoteState: StateFlow<RemoteState> = controller.state
     val discoveredCandidates: StateFlow<List<TvCandidate>> = controller.discoveredCandidates
+    val floatingEnabled: StateFlow<Boolean> = runtime.floatingPreferences.enabled
 
     private val mutableManualHost = MutableStateFlow("")
     val manualHost: StateFlow<String> = mutableManualHost.asStateFlow()
@@ -28,7 +30,7 @@ class RemoteViewModel(application: Application) : AndroidViewModel(application) 
     val transientError: StateFlow<RemoteError?> = mutableTransientError.asStateFlow()
 
     private val lifecycleMutex = Mutex()
-    private val initialization = viewModelScope.async { controller.initialize() }
+    private var connectionJob: Job? = null
 
     fun updateManualHost(value: String) {
         mutableManualHost.value = value.trimStart().take(255)
@@ -47,7 +49,7 @@ class RemoteViewModel(application: Application) : AndroidViewModel(application) 
             mutableTransientError.value = RemoteError.TV_NOT_FOUND
             return
         }
-        launchAction {
+        launchConnection {
             controller.connect(
                 TvCandidate(
                     locatorKey = "manual:$host",
@@ -59,9 +61,9 @@ class RemoteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun connectRemembered() = launchAction { controller.connectRemembered() }
+    fun connectRemembered() = launchConnection { controller.connectRemembered() }
 
-    fun connect(candidate: TvCandidate) = launchAction { controller.connect(candidate) }
+    fun connect(candidate: TvCandidate) = launchConnection { controller.connect(candidate) }
 
     fun submitPairingCode() {
         val code = pairingCode.value
@@ -82,23 +84,43 @@ class RemoteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun disconnect() = launchAction { controller.disconnect() }
+    fun cancelConnection() = disconnect()
+
+    fun disconnect() {
+        connectionJob?.cancel()
+        launchAction { controller.disconnect() }
+    }
 
     fun forget() = launchAction { controller.forget() }
 
-    fun onBackground() = launchAction {
-        lifecycleMutex.withLock {
-            initialization.await()
-            controller.enterBackground()
+    fun onBackground() {
+        connectionJob?.cancel()
+        launchAction {
+            lifecycleMutex.withLock {
+                runtime.awaitInitialized()
+                controller.enterBackground()
+            }
         }
     }
 
-    fun onForeground() = launchAction {
-        lifecycleMutex.withLock {
-            initialization.await()
-            controller.enterForeground()
+    fun onForeground() {
+        if (connectionJob?.isActive == true) return
+        launchConnection {
+            lifecycleMutex.withLock {
+                runtime.awaitInitialized()
+                controller.enterForeground()
+            }
         }
     }
+
+    fun setFloatingEnabled(enabled: Boolean) {
+        runtime.floatingPreferences.setEnabled(enabled)
+    }
+
+    fun shouldEnterFloatingMode(hasOverlayPermission: Boolean): Boolean =
+        floatingEnabled.value &&
+            hasOverlayPermission &&
+            remoteState.value is RemoteState.Connected
 
     fun clearTransientError() {
         mutableTransientError.value = null
@@ -106,13 +128,24 @@ class RemoteViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun launchAction(block: suspend () -> Unit) {
         viewModelScope.launch {
-            try {
-                block()
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Throwable) {
-                showTransientError(error)
-            }
+            runAction(block)
+        }
+    }
+
+    private fun launchConnection(block: suspend () -> Unit) {
+        connectionJob?.cancel()
+        connectionJob = viewModelScope.launch {
+            runAction(block)
+        }
+    }
+
+    private suspend fun runAction(block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            showTransientError(error)
         }
     }
 
@@ -122,7 +155,7 @@ class RemoteViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     override fun onCleared() {
-        controller.close()
+        connectionJob?.cancel()
         super.onCleared()
     }
 }

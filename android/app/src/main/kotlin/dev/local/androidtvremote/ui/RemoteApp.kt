@@ -20,11 +20,15 @@ import dev.local.androidtvremote.RemoteState
 import dev.local.androidtvremote.RemoteViewModel
 
 @Composable
-fun RemoteApp(viewModel: RemoteViewModel) {
+fun RemoteApp(
+    viewModel: RemoteViewModel,
+    onFloatingEnabledChange: (Boolean) -> Unit,
+) {
     val remoteState by viewModel.remoteState.collectAsStateWithLifecycle()
     val discoveredCandidates by viewModel.discoveredCandidates.collectAsStateWithLifecycle()
     val manualHost by viewModel.manualHost.collectAsStateWithLifecycle()
     val pairingCode by viewModel.pairingCode.collectAsStateWithLifecycle()
+    val floatingEnabled by viewModel.floatingEnabled.collectAsStateWithLifecycle()
     val transientError by viewModel.transientError.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val transientMessage = transientError?.let { stringResource(it.messageResource()) }
@@ -43,6 +47,7 @@ fun RemoteApp(viewModel: RemoteViewModel) {
                     is RemoteState.Connecting -> LoadingScreen(
                         padding = padding,
                         title = stringResource(R.string.connecting_to, state.candidate.name),
+                        onCancel = viewModel::cancelConnection,
                     )
 
                     is RemoteState.NeedsPairing -> PairingScreen(
@@ -69,16 +74,20 @@ fun RemoteApp(viewModel: RemoteViewModel) {
                         padding = padding,
                         device = state.device,
                         enabled = true,
+                        floatingEnabled = floatingEnabled,
                         onCommand = viewModel::send,
                         onDisconnect = viewModel::disconnect,
+                        onFloatingEnabledChange = onFloatingEnabledChange,
                     )
 
                     is RemoteState.Reconnecting -> RemoteScreen(
                         padding = padding,
                         device = state.device,
                         enabled = false,
+                        floatingEnabled = floatingEnabled,
                         onCommand = viewModel::send,
                         onDisconnect = viewModel::disconnect,
+                        onFloatingEnabledChange = onFloatingEnabledChange,
                     )
 
                     is RemoteState.Discovering -> DeviceScreen(

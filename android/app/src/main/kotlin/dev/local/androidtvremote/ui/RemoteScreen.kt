@@ -36,6 +36,7 @@ import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -82,9 +83,12 @@ fun RemoteScreen(
     padding: PaddingValues,
     device: TvDevice,
     enabled: Boolean,
+    floatingEnabled: Boolean,
     onCommand: suspend (RemoteCommand, RemoteKeyAction) -> Unit,
     onDisconnect: () -> Unit,
+    onFloatingEnabledChange: (Boolean) -> Unit,
 ) {
+    val floatingRemoteLabel = stringResource(R.string.floating_remote)
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -124,6 +128,38 @@ fun RemoteScreen(
                         modifier = Modifier.heightIn(min = 48.dp).testTag("remote_disconnect"),
                         contentPadding = PaddingValues(horizontal = 12.dp),
                     ) { Text(stringResource(R.string.disconnect)) }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(18.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            floatingRemoteLabel,
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            stringResource(R.string.floating_remote_description),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Switch(
+                        checked = floatingEnabled,
+                        onCheckedChange = onFloatingEnabledChange,
+                        enabled = enabled,
+                        modifier = Modifier
+                            .semantics { contentDescription = floatingRemoteLabel }
+                            .testTag("floating_remote_toggle"),
+                    )
                 }
             }
 

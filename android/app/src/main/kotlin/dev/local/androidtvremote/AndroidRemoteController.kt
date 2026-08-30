@@ -158,6 +158,8 @@ class AndroidRemoteController(
                 completePairedDraftLocked(draft)
             } catch (error: RemoteOperationException) {
                 throw error
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Throwable) {
                 withContext(Dispatchers.IO) { pending.session.close() }
                 pairing = null
@@ -271,6 +273,9 @@ class AndroidRemoteController(
             rememberedRecord = updated
             remoteSession = opened
             mutableState.value = RemoteState.Connected(updated.device)
+        } catch (error: CancellationException) {
+            activeSessionToken = null
+            throw error
         } catch (error: ClientIdentityRejectedException) {
             beginPairingLocked(candidate, previousRecord = record)
         } catch (error: TrustChangedException) {
@@ -316,6 +321,8 @@ class AndroidRemoteController(
                     }
                 }
             }
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Throwable) {
             val mapped = mapConnectionFailure(error)
             mutableState.value = RemoteState.Failed(
@@ -389,6 +396,9 @@ class AndroidRemoteController(
             remoteSession = opened
             pairedDraft = null
             mutableState.value = RemoteState.Connected(device)
+        } catch (error: CancellationException) {
+            activeSessionToken = null
+            throw error
         } catch (error: Throwable) {
             val mapped = mapConnectionFailure(error)
             mutableState.value = RemoteState.Failed(
@@ -421,6 +431,9 @@ class AndroidRemoteController(
             delay(checkNotNull(RetryPolicy.delayMillis(attempt)))
             try {
                 return openRemoteLocked(host, expectedFingerprint)
+            } catch (error: CancellationException) {
+                activeSessionToken = null
+                throw error
             } catch (error: TrustChangedException) {
                 throw error
             } catch (error: Throwable) {

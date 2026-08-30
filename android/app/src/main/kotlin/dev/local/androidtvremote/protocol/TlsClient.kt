@@ -13,6 +13,11 @@ import javax.net.ssl.SSLSocket
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509KeyManager
 import javax.net.ssl.X509TrustManager
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 
 class TrustChangedException(cause: Throwable? = null) : Exception("TV identity changed", cause)
 class ClientIdentityRejectedException(cause: Throwable? = null) : Exception("TV rejected client identity", cause)
@@ -29,12 +34,40 @@ class TlsClient(
     fun connectPairing(host: String, expectedFingerprint: String? = null): TlsConnection =
         connect(host, PAIRING_PORT, expectedFingerprint)
 
-    fun connectRemote(host: String, expectedFingerprint: String?): TlsConnection =
-        connect(host, REMOTE_PORT, expectedFingerprint)
+    suspend fun connectRemote(host: String, expectedFingerprint: String?): TlsConnection =
+        withContext(Dispatchers.IO) {
+            suspendCancellableCoroutine { continuation ->
+                try {
+                    val connection = connect(
+                        host = host,
+                        port = REMOTE_PORT,
+                        expectedFingerprint = expectedFingerprint,
+                        onSocketCreated = { socket ->
+                            continuation.invokeOnCancellation {
+                                runCatching { socket.close() }
+                            }
+                        },
+                    )
+                    if (continuation.isActive) {
+                        continuation.resume(connection)
+                    } else {
+                        runCatching { connection.socket.close() }
+                    }
+                } catch (error: Throwable) {
+                    if (continuation.isActive) continuation.resumeWithException(error)
+                }
+            }
+        }
 
-    private fun connect(host: String, port: Int, expectedFingerprint: String?): TlsConnection {
+    private fun connect(
+        host: String,
+        port: Int,
+        expectedFingerprint: String?,
+        onSocketCreated: (SSLSocket) -> Unit = {},
+    ): TlsConnection {
         val trustManager = PinningTrustManager(expectedFingerprint)
         val socket = createContext(trustManager).socketFactory.createSocket() as SSLSocket
+        onSocketCreated(socket)
         try {
             socket.useClientMode = true
             socket.soTimeout = TRANSPORT_TIMEOUT_MILLIS

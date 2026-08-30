@@ -13,6 +13,7 @@
     <string name="connect">Connect</string>
     <string name="forget">Forget</string>
     <string name="connecting_to">Connecting to %1$s…</string>
+    <string name="cancel_connection">Cancel connection</string>
     <string name="pair_tv">Pair TV</string>
     <string name="pairing_instructions">Enter the six-character code shown on the TV.</string>
     <string name="pairing_code">Pairing code</string>
@@ -36,6 +37,16 @@
     <string name="volume_down">Volume down</string>
     <string name="mute">Mute</string>
     <string name="volume_up">Volume up</string>
+    <string name="floating_remote">Floating remote</string>
+    <string name="floating_remote_description">Show a compact remote over other apps when you leave this screen.</string>
+    <string name="floating_remote_notification">Floating remote connected to %1$s</string>
+    <string name="floating_remote_channel">Floating remote</string>
+    <string name="floating_remote_channel_description">Keeps the TV connection active while the floating remote is visible.</string>
+    <string name="collapse">Collapse</string>
+    <string name="expand_floating_remote">Open floating remote</string>
+    <string name="open_full_remote">Open full remote</string>
+    <string name="exit_floating_remote">Exit floating remote</string>
+    <string name="exit_floating_remote_description">Disconnect and turn off</string>
 
     <string name="error_network_unreachable">Could not reach the TV. Check Wi-Fi and the IP address, then retry.</string>
     <string name="error_tv_not_found">Enter a valid TV address and make sure the TV is online.</string>
