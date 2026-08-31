@@ -18,11 +18,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.local.androidtvremote.R
 import dev.local.androidtvremote.RemoteState
 import dev.local.androidtvremote.RemoteViewModel
+import dev.local.androidtvremote.VoiceState
 
 @Composable
 fun RemoteApp(
     viewModel: RemoteViewModel,
     onFloatingEnabledChange: (Boolean) -> Unit,
+    onVoiceStart: () -> Unit,
+    onVoiceStop: () -> Unit,
 ) {
     val remoteState by viewModel.remoteState.collectAsStateWithLifecycle()
     val discoveredCandidates by viewModel.discoveredCandidates.collectAsStateWithLifecycle()
@@ -30,6 +33,7 @@ fun RemoteApp(
     val pairingCode by viewModel.pairingCode.collectAsStateWithLifecycle()
     val floatingEnabled by viewModel.floatingEnabled.collectAsStateWithLifecycle()
     val transientError by viewModel.transientError.collectAsStateWithLifecycle()
+    val voiceState by viewModel.voiceState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val transientMessage = transientError?.let { stringResource(it.messageResource()) }
 
@@ -78,6 +82,9 @@ fun RemoteApp(
                         onCommand = viewModel::send,
                         onDisconnect = viewModel::disconnect,
                         onFloatingEnabledChange = onFloatingEnabledChange,
+                        voiceState = voiceState,
+                        onVoiceStart = onVoiceStart,
+                        onVoiceStop = onVoiceStop,
                     )
 
                     is RemoteState.Reconnecting -> RemoteScreen(
@@ -88,6 +95,9 @@ fun RemoteApp(
                         onCommand = viewModel::send,
                         onDisconnect = viewModel::disconnect,
                         onFloatingEnabledChange = onFloatingEnabledChange,
+                        voiceState = VoiceState.UNAVAILABLE,
+                        onVoiceStart = onVoiceStart,
+                        onVoiceStop = onVoiceStop,
                     )
 
                     is RemoteState.Discovering -> DeviceScreen(

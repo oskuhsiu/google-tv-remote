@@ -26,6 +26,13 @@ enum class RemoteKeyAction {
     END_LONG,
 }
 
+enum class VoiceState {
+    UNAVAILABLE,
+    IDLE,
+    STARTING,
+    LISTENING,
+}
+
 enum class RemotePressBehavior {
     SINGLE,
     LONG_PRESS,
@@ -145,6 +152,7 @@ object ForegroundPolicy {
 interface RemoteController {
     val state: StateFlow<RemoteState>
     val discoveredCandidates: StateFlow<List<TvCandidate>>
+    val voiceState: StateFlow<VoiceState>
 
     suspend fun initialize()
     suspend fun enterForeground()
@@ -152,6 +160,8 @@ interface RemoteController {
     suspend fun connectRemembered()
     suspend fun submitPairingCode(code: String)
     suspend fun send(command: RemoteCommand, action: RemoteKeyAction = RemoteKeyAction.SHORT)
+    suspend fun startVoice()
+    suspend fun stopVoice()
     suspend fun disconnect()
     suspend fun forget()
     suspend fun enterBackground()

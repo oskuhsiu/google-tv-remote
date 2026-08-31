@@ -7,6 +7,9 @@ import dev.local.androidtvremote.protocol.OversizedFrameException
 import dev.local.androidtvremote.protocol.PairingCode
 import dev.local.androidtvremote.protocol.PairingSecret
 import dev.local.androidtvremote.protocol.RemoteMessageFactory
+import dev.local.androidtvremote.protocol.RemoteSession
+import dev.local.androidtvremote.protocol.VoiceSessionGate
+import dev.local.androidtvremote.audio.PcmChunkAccumulator
 import java.io.ByteArrayInputStream
 import java.io.EOFException
 import java.math.BigInteger
@@ -86,6 +89,82 @@ class ProtocolTests {
     @Test
     fun `ping response echoes request value`() {
         assertEquals(73, RemoteMessageFactory.pong(73).remotePingResponse.val1)
+    }
+
+    @Test
+    fun `voice messages serialize search begin payload and end with one session id`() {
+        val sessionId = 417
+        val samples = ByteArray(8_192) { (it % 251).toByte() }
+
+        val search = RemoteMessageFactory.search()
+        val begin = RemoteMessageFactory.voiceBegin(sessionId)
+        val payload = RemoteMessageFactory.voicePayload(sessionId, samples)
+        val end = RemoteMessageFactory.voiceEnd(sessionId)
+
+        assertEquals(RemoteMessageFactory.VOICE_SEARCH_KEY_CODE, search.remoteKeyInject.keyCodeValue)
+        assertEquals(RemoteDirection.SHORT, search.remoteKeyInject.direction)
+        assertEquals(sessionId, begin.remoteVoiceBegin.sessionId)
+        assertEquals(sessionId, payload.remoteVoicePayload.sessionId)
+        assertArrayEquals(samples, payload.remoteVoicePayload.samples.toByteArray())
+        assertEquals(sessionId, end.remoteVoiceEnd.sessionId)
+    }
+
+    @Test
+    fun `voice feature is advertised and negotiated only when the TV supports it`() {
+        assertEquals(
+            RemoteSession.FEATURE_VOICE,
+            RemoteSession.negotiatedFeatures(RemoteSession.FEATURE_VOICE) and RemoteSession.FEATURE_VOICE,
+        )
+        assertEquals(0, RemoteSession.negotiatedFeatures(0) and RemoteSession.FEATURE_VOICE)
+    }
+
+    @Test
+    fun `runtime microphone revocation maps to permission denied`() {
+        assertEquals(RemoteError.VOICE_PERMISSION_DENIED, voiceFailureError(SecurityException()))
+        assertEquals(RemoteError.VOICE_SESSION_FAILED, voiceFailureError(IllegalStateException()))
+    }
+
+    @Test
+    fun `voice gate ignores stale begin and sends end at most once`() {
+        val gate = VoiceSessionGate()
+        assertEquals(false, gate.acceptBegin(10))
+        gate.startWaiting()
+        assertEquals(true, gate.acceptBegin(11))
+        assertEquals(false, gate.acceptBegin(12))
+        assertEquals(true, gate.isActive(11))
+        assertEquals(false, gate.takeEnd(12))
+        assertEquals(true, gate.takeEnd(11))
+        assertEquals(false, gate.takeEnd(11))
+
+        gate.startWaiting()
+        assertNull(gate.cancelAndTakeActive())
+        assertEquals(false, gate.acceptBegin(13))
+
+        gate.startWaiting()
+        assertEquals(true, gate.acceptBegin(14))
+        assertEquals(14, gate.cancelAndTakeActive())
+        gate.startWaiting()
+        assertNull(gate.cancelAndTakeActive())
+    }
+
+    @Test
+    fun `pcm accumulator emits 8 KiB chunks and zero pads its tail`() {
+        val accumulator = PcmChunkAccumulator()
+        val first = ByteArray(5_000) { 1 }
+        val second = ByteArray(4_000) { 2 }
+
+        assertEquals(0, accumulator.append(first).size)
+        val chunks = accumulator.append(second)
+        assertEquals(1, chunks.size)
+        assertEquals(8_192, chunks.single().size)
+        assertEquals(1, chunks.single()[4_999].toInt())
+        assertEquals(2, chunks.single()[5_000].toInt())
+
+        val tail = checkNotNull(accumulator.finish())
+        assertEquals(8_192, tail.size)
+        assertEquals(2, tail[807].toInt())
+        assertEquals(0, tail[808].toInt())
+        assertNull(accumulator.finish())
     }
 
     @Test
