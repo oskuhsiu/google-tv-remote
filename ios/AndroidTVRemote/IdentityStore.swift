@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import Security
+import UIKit
 import X509
 
 struct ClientIdentity {
@@ -19,6 +20,82 @@ enum IdentityStoreError: Error, Equatable {
     case randomGeneration(status: OSStatus)
     case certificateCreation
     case identityCreation
+}
+
+final class ClientNameStore {
+    private let service: String
+    private let account = "device-suffix"
+
+    init(namespace: String = "production") {
+        service = "dev.local.AndroidTVRemote.client-name.\(namespace)"
+    }
+
+    func loadOrCreate() -> String {
+        do {
+            if let suffix = try loadSuffix() {
+                return "TV Remote-\(suffix)"
+            }
+        } catch {
+            return "TV Remote-\(generatedSuffix())"
+        }
+
+        let suffix = generatedSuffix()
+        try? saveSuffix(suffix)
+        return "TV Remote-\(suffix)"
+    }
+
+    private func generatedSuffix() -> String {
+        let source = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+        return SHA256.hash(data: Data(source.utf8))
+            .prefix(3)
+            .map { String(format: "%02X", $0) }
+            .joined()
+    }
+
+    private func loadSuffix() throws -> String? {
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(
+            [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service,
+                kSecAttrAccount as String: account,
+                kSecReturnData as String: true,
+                kSecMatchLimit as String: kSecMatchLimitOne,
+            ] as CFDictionary,
+            &result
+        )
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let suffix = String(data: data, encoding: .utf8),
+              suffix.count == 6 else {
+            throw IdentityStoreError.keychain(operation: "load client name", status: status)
+        }
+        return suffix
+    }
+
+    private func saveSuffix(_ suffix: String) throws {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+        let attributes: [String: Any] = [
+            kSecValueData as String: Data(suffix.utf8),
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+        ]
+        let status = SecItemAdd(query.merging(attributes) { _, new in new } as CFDictionary, nil)
+        if status == errSecDuplicateItem {
+            let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+            guard updateStatus == errSecSuccess else {
+                throw IdentityStoreError.keychain(operation: "update client name", status: updateStatus)
+            }
+            return
+        }
+        guard status == errSecSuccess else {
+            throw IdentityStoreError.keychain(operation: "save client name", status: status)
+        }
+    }
 }
 
 final class IdentityStore {

@@ -1,6 +1,7 @@
 package dev.local.androidtvremote
 
 import android.content.Context
+import android.provider.Settings
 import dev.local.androidtvremote.audio.AudioRecordVoiceCapture
 import dev.local.androidtvremote.audio.VoiceAudioCapture
 import dev.local.androidtvremote.discovery.TvDiscovery
@@ -20,6 +21,7 @@ import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
 import java.net.SocketException
 import java.net.UnknownHostException
+import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.net.ssl.SSLException
 import kotlinx.coroutines.CancellationException
@@ -53,6 +55,9 @@ class AndroidRemoteController(
         AudioRecordVoiceCapture(context.applicationContext)
     },
 ) : RemoteController {
+    private val androidId = Settings.Secure
+        .getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+        ?.takeIf(String::isNotBlank)
     private val identityStore = IdentityStore()
     private val lastTvStore = LastTvStore(context.applicationContext)
     private val tvDiscovery = TvDiscovery(context.applicationContext)
@@ -417,11 +422,12 @@ class AndroidRemoteController(
         pairedDraft = null
         mutableState.value = RemoteState.Connecting(candidate)
         val identity = withContext(Dispatchers.IO) { identityStore.loadOrCreate() }
+        val clientName = deviceClientName(androidId ?: identity.fingerprint)
         try {
             val session = withContext(Dispatchers.IO) {
                 pairingClient.start(
                     host = candidate.host,
-                    clientName = CLIENT_NAME,
+                    clientName = clientName,
                     identity = identity,
                     expectedPeerFingerprint = previousRecord?.pairingPeerFingerprint,
                 )
@@ -659,10 +665,17 @@ class AndroidRemoteController(
         }
 
     companion object {
-        private const val CLIENT_NAME = "TV Remote"
         private const val PAIRING_INPUT_TIMEOUT_MILLIS = 60_000L
         private const val VOICE_TEARDOWN_TIMEOUT_MILLIS = 5_500L
     }
+}
+
+private fun deviceClientName(identifier: String): String {
+    val suffix = MessageDigest.getInstance("SHA-256")
+        .digest(identifier.toByteArray(Charsets.UTF_8))
+        .take(3)
+        .joinToString("") { "%02X".format(it) }
+    return "TV Remote-$suffix"
 }
 
 internal fun voiceFailureError(error: Throwable): RemoteError =

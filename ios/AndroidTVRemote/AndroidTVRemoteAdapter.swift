@@ -10,6 +10,7 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
     var onVoiceError: ((RemoteError) -> Void)?
 
     private let identityStore: IdentityStore
+    private let clientNameStore: ClientNameStore
     private var remoteManager: RemoteManager?
     private var writer: OutboundWriter?
     private var trustGate: PeerTrustGate?
@@ -22,8 +23,12 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
     private var activeVoiceRun: VoiceRun?
     private var voiceTask: Task<Void, Never>?
 
-    init(identityStore: IdentityStore) {
+    init(
+        identityStore: IdentityStore,
+        clientNameStore: ClientNameStore = ClientNameStore()
+    ) {
         self.identityStore = identityStore
+        self.clientNameStore = clientNameStore
     }
 
     func connect(to record: LastTvRecord) {
@@ -47,7 +52,7 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
             }
 
             let deviceInfo = CommandNetwork.DeviceInfo(
-                "iPhone",
+                clientNameStore.loadOrCreate(),
                 "Apple",
                 "1.0.0",
                 "dev.local.AndroidTVRemote",
