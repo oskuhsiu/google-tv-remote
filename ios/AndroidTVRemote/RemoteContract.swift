@@ -284,6 +284,7 @@ enum PairingCodeValidator {
 @MainActor
 protocol DiscoveryControlling: AnyObject {
     var onCandidatesChanged: (([TvCandidate]) -> Void)? { get set }
+    var onErrorChanged: ((RemoteError?) -> Void)? { get set }
     func start()
     func stop()
 }

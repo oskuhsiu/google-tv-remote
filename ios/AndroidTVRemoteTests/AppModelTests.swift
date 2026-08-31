@@ -390,6 +390,7 @@ private final class RecordingKeepAlive: BackgroundKeepAliveControlling {
 @MainActor
 private final class RecordingDiscovery: DiscoveryControlling {
     var onCandidatesChanged: (([TvCandidate]) -> Void)?
+    var onErrorChanged: ((RemoteError?) -> Void)?
     var startCount = 0
     var stopCount = 0
     func start() { startCount += 1 }

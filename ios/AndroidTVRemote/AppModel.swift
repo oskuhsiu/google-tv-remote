@@ -6,6 +6,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var state: RemoteState = .idle
     @Published private(set) var rememberedRecord: LastTvRecord?
     @Published private(set) var diagnosticMessage: String?
+    @Published private(set) var discoveryMessage: String?
     @Published private(set) var keepReadyEnabled: Bool
     @Published private(set) var keepAliveStatus: KeepAliveStatus
     @Published private(set) var voiceState: VoiceState = .unavailable
@@ -82,7 +83,16 @@ final class AppModel: ObservableObject {
 
         discovery.onCandidatesChanged = { [weak self] candidates in
             guard let self, self.sceneIsActive, self.rememberedRecord == nil else { return }
+            if !candidates.isEmpty {
+                self.discoveryMessage = nil
+            }
             self.state = .discovering(candidates)
+        }
+        discovery.onErrorChanged = { [weak self] error in
+            guard let self, self.sceneIsActive, self.rememberedRecord == nil else { return }
+            self.discoveryMessage = error == nil
+                ? nil
+                : "Local network access is unavailable. Check Local Network permission in Settings, then retry."
         }
         session.onEvent = { [weak self] event in
             self?.handleSessionEvent(event)
@@ -230,6 +240,14 @@ final class AppModel: ObservableObject {
         discovery.stop()
         state = .connecting(rememberedRecord.device)
         session.connect(to: rememberedRecord)
+    }
+
+    func retryDiscovery() {
+        guard sceneIsActive, rememberedRecord == nil else { return }
+        discoveryMessage = nil
+        state = .discovering([])
+        discovery.stop()
+        discovery.start()
     }
 
     func requestCompactRemote() {
