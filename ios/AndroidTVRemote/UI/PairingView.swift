@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct PairingView: View {
+    @ObservedObject var model: AppModel
     let device: RemoteDevice
     @State private var code = ""
 
@@ -10,14 +11,28 @@ struct PairingView: View {
                 TextField("6-character code", text: $code)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
-                Button("Submit") {}
-                    .disabled(true)
-                Text("Pairing transport integration is not available in this foundation build.")
+                    .textContentType(.oneTimeCode)
+                Button("Submit") {
+                    model.submitPairingCode(code)
+                }
+                    .disabled(!PairingCodeValidator.isValid(code) || isSubmitting)
+                if isSubmitting {
+                    ProgressView("Connecting…")
+                } else {
+                    Text("Enter the 6-character code shown on your TV.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                }
+                Button("Back to TVs", role: .cancel) {
+                    model.cancelPairing()
+                }
             }
         }
         .navigationTitle("Pair TV")
     }
-}
 
+    private var isSubmitting: Bool {
+        if case .pairing = model.state { return true }
+        return false
+    }
+}

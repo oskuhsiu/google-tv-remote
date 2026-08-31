@@ -250,6 +250,54 @@ final class AppModel: ObservableObject {
         discovery.start()
     }
 
+    func selectDiscoveredTV(_ candidate: TvCandidate) {
+        guard sceneIsActive, rememberedRecord == nil else { return }
+        discovery.stop()
+        discoveryMessage = nil
+        diagnosticMessage = nil
+
+        let locatorParts = candidate.locatorKey.split(
+            separator: "|",
+            maxSplits: 2,
+            omittingEmptySubsequences: false
+        )
+        let locator = locatorParts.count == 3
+            ? BonjourLocator(
+                domain: String(locatorParts[0]),
+                type: String(locatorParts[1]),
+                name: String(locatorParts[2])
+            )
+            : nil
+        let device = RemoteDevice(
+            id: candidate.locatorKey,
+            name: candidate.name,
+            host: candidate.host,
+            locator: locator,
+            source: candidate.source
+        )
+        sessionEventsAllowed = true
+        state = .pairing(device)
+        session.startPairing(with: device)
+    }
+
+    func submitPairingCode(_ code: String) {
+        guard sceneIsActive,
+              case .needsPairing(let device) = state,
+              let normalizedCode = PairingCodeValidator.normalized(code) else {
+            return
+        }
+        diagnosticMessage = nil
+        state = .pairing(device)
+        session.submitPairingCode(normalizedCode)
+    }
+
+    func cancelPairing() {
+        guard sceneIsActive, rememberedRecord == nil else { return }
+        session.disconnect()
+        state = .discovering([])
+        discovery.start()
+    }
+
     func requestCompactRemote() {
         guard sceneIsActive, canConnectRemembered else { return }
         switch state {
@@ -333,6 +381,19 @@ final class AppModel: ObservableObject {
     private func handleSessionEvent(_ event: RemoteSessionEvent) {
         guard sessionEventsAllowed, !disconnectedByUser else { return }
         switch event {
+        case .pairingCodeRequested(let device):
+            state = .needsPairing(device)
+        case .pairingCompleted(let record):
+            do {
+                try store.save(record)
+                rememberedRecord = record
+                state = .connected(record.device)
+            } catch {
+                sessionEventsAllowed = false
+                session.disconnect()
+                diagnosticMessage = "The paired TV could not be saved. Forget it on the TV and try again."
+                state = .failed(record.device, reason: .unknown, recoverable: true)
+            }
         case .connected(let device):
             cancelReconnect()
             state = .connected(device)
@@ -340,7 +401,14 @@ final class AppModel: ObservableObject {
                 backgroundKeepAlive.start()
             }
         case .failed(let device, let reason, let recoverable):
-            if reason == .pairingRequired, let device {
+            if rememberedRecord == nil, sceneIsActive {
+                cancelReconnect()
+                backgroundKeepAlive.stop()
+                diagnosticMessage = pairingFailureMessage(for: reason)
+                    ?? "Could not connect to the TV. Select it and try again."
+                state = .discovering([])
+                discovery.start()
+            } else if reason == .pairingRequired, let device {
                 cancelReconnect()
                 backgroundKeepAlive.stop()
                 sessionEventsAllowed = sceneIsActive
@@ -353,8 +421,22 @@ final class AppModel: ObservableObject {
                 cancelReconnect()
                 backgroundKeepAlive.stop()
                 sessionEventsAllowed = sceneIsActive
+                diagnosticMessage = pairingFailureMessage(for: reason)
                 state = .failed(device, reason: reason, recoverable: recoverable)
             }
+        }
+    }
+
+    private func pairingFailureMessage(for reason: RemoteError) -> String? {
+        switch reason {
+        case .pairingCodeInvalid:
+            return "That pairing code was not accepted. Select the TV and try again."
+        case .pairingRejected:
+            return "The TV rejected pairing. Select it and try again."
+        case .pairingTimeout:
+            return "Pairing timed out. Select the TV and try again."
+        default:
+            return nil
         }
     }
 

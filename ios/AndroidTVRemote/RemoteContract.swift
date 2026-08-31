@@ -208,6 +208,8 @@ enum RemoteState: Equatable, Sendable {
 }
 
 enum RemoteSessionEvent: Equatable, Sendable {
+    case pairingCodeRequested(RemoteDevice)
+    case pairingCompleted(LastTvRecord)
     case connected(RemoteDevice)
     case failed(RemoteDevice?, reason: RemoteError, recoverable: Bool)
 }
@@ -294,6 +296,8 @@ protocol RemoteSessionControlling: AnyObject {
     var onEvent: ((RemoteSessionEvent) -> Void)? { get set }
     var onVoiceStateChanged: ((VoiceState) -> Void)? { get set }
     var onVoiceError: ((RemoteError) -> Void)? { get set }
+    func startPairing(with device: RemoteDevice)
+    func submitPairingCode(_ code: String)
     func connect(to record: LastTvRecord)
     func disconnect()
     func send(command: RemoteCommand, action: RemoteKeyAction)

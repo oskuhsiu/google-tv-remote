@@ -404,6 +404,8 @@ private final class RecordingSession: RemoteSessionControlling {
     var onVoiceError: ((RemoteError) -> Void)?
     var connectedRecords: [LastTvRecord] = []
     var disconnectCount = 0
+    func startPairing(with device: RemoteDevice) {}
+    func submitPairingCode(_ code: String) {}
     func connect(to record: LastTvRecord) { connectedRecords.append(record) }
     func disconnect() { disconnectCount += 1 }
     func send(command: RemoteCommand, action: RemoteKeyAction) {}

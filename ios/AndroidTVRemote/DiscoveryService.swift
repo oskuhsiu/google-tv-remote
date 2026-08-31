@@ -231,6 +231,8 @@ final class UnavailableRemoteSession: RemoteSessionControlling {
     var onEvent: ((RemoteSessionEvent) -> Void)?
     var onVoiceStateChanged: ((VoiceState) -> Void)?
     var onVoiceError: ((RemoteError) -> Void)?
+    func startPairing(with device: RemoteDevice) {}
+    func submitPairingCode(_ code: String) {}
     func connect(to record: LastTvRecord) {}
     func disconnect() {}
     func send(command: RemoteCommand, action: RemoteKeyAction) {}

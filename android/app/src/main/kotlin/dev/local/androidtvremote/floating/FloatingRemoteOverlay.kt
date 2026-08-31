@@ -1,6 +1,7 @@
 package dev.local.androidtvremote.floating
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -103,6 +104,7 @@ internal fun FloatingRemoteOverlay(
             onDragEnd = onDragEnd,
             onCommand = onCommand,
             onExit = onExit,
+            onOpenFullRemote = onOpenFullRemote,
             maximumHeightDp = maximumHeightDp,
         )
     } else {
@@ -213,6 +215,7 @@ private fun ExpandedRemote(
     onDragEnd: () -> Unit,
     onCommand: suspend (RemoteCommand, RemoteKeyAction) -> Unit,
     onExit: () -> Unit,
+    onOpenFullRemote: () -> Unit,
     maximumHeightDp: Int,
 ) {
     val maximumHeight = maximumHeightDp.coerceAtLeast(240).dp
@@ -245,30 +248,39 @@ private fun ExpandedRemote(
                     },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(contentAlignment = Alignment.TopEnd) {
-                    Surface(
-                        modifier = Modifier.size(42.dp),
-                        shape = RoundedCornerShape(13.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                    ) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Rounded.Tv, contentDescription = null, modifier = Modifier.size(23.dp))
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(58.dp)
+                        .clickable(onClick = onOpenFullRemote)
+                        .testTag("floating_connected_tv"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(contentAlignment = Alignment.TopEnd) {
+                        Surface(
+                            modifier = Modifier.size(42.dp),
+                            shape = RoundedCornerShape(13.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                        ) {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Icon(Icons.Rounded.Tv, contentDescription = null, modifier = Modifier.size(23.dp))
+                            }
                         }
+                        Surface(modifier = Modifier.size(10.dp), shape = CircleShape, color = ConnectedGreen) {}
                     }
-                    Surface(modifier = Modifier.size(10.dp), shape = CircleShape, color = ConnectedGreen) {}
-                }
-                Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
-                    Text(
-                        stringResource(R.string.connected),
-                        color = ConnectedGreen,
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                    Text(
-                        deviceName,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleSmall,
-                    )
+                    Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                        Text(
+                            stringResource(R.string.connected),
+                            color = ConnectedGreen,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                        Text(
+                            deviceName,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                    }
                 }
                 IconButton(
                     onClick = onCollapse,

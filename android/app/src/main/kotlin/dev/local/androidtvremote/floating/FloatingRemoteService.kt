@@ -279,7 +279,9 @@ class FloatingRemoteService : LifecycleService(), SavedStateRegistryOwner, ViewM
         floatingRequested = false
         handoffRequested = true
         handoffToForeground = true
+        serviceActiveOrRequested = false
         removeOverlay()
+        stopSelf()
         startActivity(fullRemoteIntent())
     }
 

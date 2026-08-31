@@ -27,7 +27,7 @@ struct RootView: View {
     private var compactContent: some View {
         switch model.state {
         case .needsPairing(let device), .pairing(let device):
-            PairingView(device: device)
+            PairingView(model: model, device: device)
         default:
             if let record = model.rememberedRecord {
                 CompactRemoteView(
@@ -45,7 +45,7 @@ struct RootView: View {
     private var fullContent: some View {
         switch model.state {
         case .needsPairing(let device), .pairing(let device):
-            PairingView(device: device)
+            PairingView(model: model, device: device)
         case .connected(let device):
             RemoteView(model: model, device: device, isConnected: true)
         case .reconnecting(let device, _):

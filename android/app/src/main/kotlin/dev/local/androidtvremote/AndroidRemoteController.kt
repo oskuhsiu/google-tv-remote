@@ -27,8 +27,6 @@ import javax.net.ssl.SSLException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -267,35 +265,8 @@ class AndroidRemoteController(
                 }
             }
             if (shouldCapture) {
-                coroutineScope {
-                    val captureJob = launch {
-                        capture.capture { samples ->
-                            if (!run.tvEnded.get()) {
-                                run.session.sendVoicePayload(sessionId, samples)
-                            }
-                        }
-                    }
-                    val remoteEndJob = launch {
-                        try {
-                            run.session.awaitVoiceEnd(sessionId)
-                            run.tvEnded.set(true)
-                            capture.stop()
-                        } catch (error: CancellationException) {
-                            throw error
-                        } catch (error: Throwable) {
-                            capture.stop()
-                            throw error
-                        }
-                    }
-                    try {
-                        captureJob.join()
-                    } finally {
-                        capture.stop()
-                        withContext(NonCancellable) {
-                            captureJob.cancelAndJoin()
-                            remoteEndJob.cancelAndJoin()
-                        }
-                    }
+                capture.capture { samples ->
+                    run.session.sendVoicePayload(sessionId, samples)
                 }
             }
         } catch (error: CancellationException) {
@@ -651,7 +622,6 @@ class AndroidRemoteController(
         val session: RemoteSession,
     ) {
         val stopRequested = AtomicBoolean(false)
-        val tvEnded = AtomicBoolean(false)
         val finished = CompletableDeferred<Unit>()
         @Volatile var sessionId: Int? = null
         @Volatile var capture: VoiceAudioCapture? = null

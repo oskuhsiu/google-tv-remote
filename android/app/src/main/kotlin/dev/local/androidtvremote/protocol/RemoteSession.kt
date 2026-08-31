@@ -45,8 +45,6 @@ class RemoteSession private constructor(
     private val voiceMutex = Mutex()
     private var pendingVoiceBegin: CompletableDeferred<Int>? = null
     private val voiceGate = VoiceSessionGate()
-    private var voiceEndSessionId: Int? = null
-    private var voiceEndSignal: CompletableDeferred<Unit>? = null
 
     val peerFingerprint: String
         get() = connection.peerFingerprint
@@ -93,8 +91,6 @@ class RemoteSession private constructor(
         voiceMutex.withLock {
             voiceGate.startWaiting()
             pendingVoiceBegin = waiter
-            voiceEndSessionId = null
-            voiceEndSignal = null
         }
         try {
             sendWithTimeout(
@@ -114,7 +110,7 @@ class RemoteSession private constructor(
             } catch (error: Throwable) {
                 withContext(NonCancellable) {
                     val shouldEnd = voiceMutex.withLock {
-                        voiceGate.takeEnd(sessionId).also { completeVoiceEndLocked(sessionId) }
+                        voiceGate.takeEnd(sessionId)
                     }
                     if (shouldEnd) runCatching { sendVoiceEndMessage(sessionId) }
                 }
@@ -126,7 +122,7 @@ class RemoteSession private constructor(
                 val orphanedSessionId = voiceMutex.withLock {
                     if (pendingVoiceBegin === waiter) {
                         pendingVoiceBegin = null
-                        voiceGate.cancelAndTakeActive()?.also(::completeVoiceEndLocked)
+                        voiceGate.cancelAndTakeActive()
                     } else {
                         null
                     }
@@ -155,20 +151,8 @@ class RemoteSession private constructor(
         )
     }
 
-    suspend fun awaitVoiceEnd(sessionId: Int) {
-        val signal = voiceMutex.withLock {
-            check(voiceEndSessionId == sessionId) { "Voice session is not active" }
-            checkNotNull(voiceEndSignal)
-        }
-        signal.await()
-    }
-
     suspend fun endVoice(sessionId: Int) {
-        val shouldSend = voiceMutex.withLock {
-            voiceGate.takeEnd(sessionId).also { ended ->
-                if (ended) completeVoiceEndLocked(sessionId)
-            }
-        }
+        val shouldSend = voiceMutex.withLock { voiceGate.takeEnd(sessionId) }
         if (shouldSend) sendVoiceEndMessage(sessionId)
     }
 
@@ -246,15 +230,7 @@ class RemoteSession private constructor(
             message.hasRemoteVoiceBegin() -> voiceMutex.withLock {
                 val waiter = pendingVoiceBegin
                 if (waiter?.isActive == true && voiceGate.acceptBegin(message.remoteVoiceBegin.sessionId)) {
-                    voiceEndSessionId = message.remoteVoiceBegin.sessionId
-                    voiceEndSignal = CompletableDeferred()
                     waiter.complete(message.remoteVoiceBegin.sessionId)
-                }
-            }
-
-            message.hasRemoteVoiceEnd() -> voiceMutex.withLock {
-                if (voiceGate.takeEnd(message.remoteVoiceEnd.sessionId)) {
-                    completeVoiceEndLocked(message.remoteVoiceEnd.sessionId)
                 }
             }
         }
@@ -290,14 +266,7 @@ class RemoteSession private constructor(
             pendingVoiceBegin?.completeExceptionally(cause)
             pendingVoiceBegin = null
             voiceGate.reset()
-            voiceEndSignal?.completeExceptionally(cause)
-            voiceEndSignal = null
-            voiceEndSessionId = null
         }
-    }
-
-    private fun completeVoiceEndLocked(sessionId: Int) {
-        if (voiceEndSessionId == sessionId) voiceEndSignal?.complete(Unit)
     }
 
     suspend fun closeAfterEndingLongPress(command: RemoteCommand?) {

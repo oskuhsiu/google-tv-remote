@@ -55,25 +55,33 @@ struct DeviceView: View {
             Text("Nearby TVs")
                 .font(.headline)
             ForEach(candidates) { candidate in
-                HStack(spacing: 12) {
-                    Image(systemName: "tv")
-                        .font(.title3)
-                        .frame(width: 32, height: 32)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(candidate.name)
-                            .font(.body.weight(.medium))
-                        Text(candidate.host)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                Button {
+                    model.selectDiscoveredTV(candidate)
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "tv")
+                            .font(.title3)
+                            .frame(width: 32, height: 32)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(candidate.name)
+                                .font(.body.weight(.medium))
+                            Text(candidate.host)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
                     }
+                    .contentShape(Rectangle())
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
                 .background(.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
+                .buttonStyle(.plain)
+                .accessibilityHint("Select this TV to begin pairing")
             }
-            Text("Pairing a newly discovered TV is not available in this build yet.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
         } else {
             ProgressView("Looking for TVs…")
             Text("Make sure the TV and iPhone are on the same local network.")
