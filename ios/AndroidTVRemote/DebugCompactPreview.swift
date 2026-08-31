@@ -17,6 +17,8 @@ enum DebugCompactPreview {
     @MainActor
     final class Session: RemoteSessionControlling {
         var onEvent: ((RemoteSessionEvent) -> Void)?
+        var onVoiceStateChanged: ((VoiceState) -> Void)?
+        var onVoiceError: ((RemoteError) -> Void)?
 
         func connect(to record: LastTvRecord) {
             Task { @MainActor [weak self] in
@@ -27,6 +29,8 @@ enum DebugCompactPreview {
 
         func disconnect() {}
         func send(command: RemoteCommand, action: RemoteKeyAction) {}
+        func startVoice() {}
+        func stopVoice() {}
     }
 
     @MainActor

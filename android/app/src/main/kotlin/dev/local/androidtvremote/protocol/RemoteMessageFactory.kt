@@ -7,6 +7,10 @@ import remote.Remotemessage.RemoteKeyCode
 import remote.Remotemessage.RemoteKeyInject
 import remote.Remotemessage.RemoteMessage
 import remote.Remotemessage.RemotePingResponse
+import remote.Remotemessage.RemoteVoiceBegin
+import remote.Remotemessage.RemoteVoiceEnd
+import remote.Remotemessage.RemoteVoicePayload
+import com.google.protobuf.ByteString
 
 object RemoteMessageFactory {
     fun key(
@@ -20,6 +24,24 @@ object RemoteMessageFactory {
     }
 
     fun search(): RemoteMessage = key(VOICE_SEARCH_KEY_CODE, RemoteKeyAction.SHORT)
+
+    fun voiceBegin(sessionId: Int): RemoteMessage = RemoteMessage.newBuilder()
+        .setRemoteVoiceBegin(RemoteVoiceBegin.newBuilder().setSessionId(sessionId))
+        .build()
+
+    fun voicePayload(sessionId: Int, samples: ByteArray): RemoteMessage {
+        require(samples.size <= MAX_VOICE_PAYLOAD_BYTES) { "Voice payload is too large" }
+        return RemoteMessage.newBuilder()
+            .setRemoteVoicePayload(
+                RemoteVoicePayload.newBuilder()
+                    .setSessionId(sessionId)
+                    .setSamples(ByteString.copyFrom(samples)),
+            ).build()
+    }
+
+    fun voiceEnd(sessionId: Int): RemoteMessage = RemoteMessage.newBuilder()
+        .setRemoteVoiceEnd(RemoteVoiceEnd.newBuilder().setSessionId(sessionId))
+        .build()
 
     fun pong(value: Int): RemoteMessage = RemoteMessage.newBuilder()
         .setRemotePingResponse(RemotePingResponse.newBuilder().setVal1(value))
@@ -37,6 +59,7 @@ object RemoteMessageFactory {
     }
 
     const val VOICE_SEARCH_KEY_CODE = 84
+    const val MAX_VOICE_PAYLOAD_BYTES = 20_480
 }
 
 private fun RemoteKeyAction.toRemoteDirection(): RemoteDirection = when (this) {

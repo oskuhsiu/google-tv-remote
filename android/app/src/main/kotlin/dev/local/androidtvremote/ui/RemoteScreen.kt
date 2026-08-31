@@ -3,6 +3,7 @@ package dev.local.androidtvremote.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,6 +33,7 @@ import androidx.compose.material.icons.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +42,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,6 +71,7 @@ import dev.local.androidtvremote.R
 import dev.local.androidtvremote.RemoteCommand
 import dev.local.androidtvremote.RemoteKeyAction
 import dev.local.androidtvremote.TvDevice
+import dev.local.androidtvremote.VoiceState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
@@ -87,6 +91,9 @@ fun RemoteScreen(
     onCommand: suspend (RemoteCommand, RemoteKeyAction) -> Unit,
     onDisconnect: () -> Unit,
     onFloatingEnabledChange: (Boolean) -> Unit,
+    voiceState: VoiceState,
+    onVoiceStart: () -> Unit,
+    onVoiceStop: () -> Unit,
 ) {
     val floatingRemoteLabel = stringResource(R.string.floating_remote)
     Column(
@@ -167,6 +174,13 @@ fun RemoteScreen(
             Text(
                 stringResource(R.string.remote_controls),
                 style = MaterialTheme.typography.titleMedium,
+            )
+            Spacer(Modifier.height(12.dp))
+            VoiceButton(
+                voiceState = voiceState,
+                enabled = enabled && voiceState != VoiceState.UNAVAILABLE,
+                onStart = onVoiceStart,
+                onStop = onVoiceStop,
             )
             Spacer(Modifier.height(16.dp))
 
@@ -282,6 +296,78 @@ fun RemoteScreen(
                     onCommand = onCommand,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun VoiceButton(
+    voiceState: VoiceState,
+    enabled: Boolean,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+) {
+    val haptics = LocalHapticFeedback.current
+    val currentOnStart by rememberUpdatedState(onStart)
+    val currentOnStop by rememberUpdatedState(onStop)
+    val label = stringResource(R.string.hold_to_talk)
+    val status = when (voiceState) {
+        VoiceState.UNAVAILABLE -> stringResource(R.string.voice_not_supported)
+        VoiceState.IDLE -> stringResource(R.string.hold_to_talk)
+        VoiceState.STARTING -> stringResource(R.string.voice_starting)
+        VoiceState.LISTENING -> stringResource(R.string.voice_listening)
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { currentOnStop() }
+    }
+
+    Surface(
+        color = if (voiceState == VoiceState.LISTENING) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant
+        },
+        shape = RoundedCornerShape(18.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(64.dp)
+            .alpha(if (enabled) 1f else 0.55f)
+            .semantics(mergeDescendants = true) {
+                contentDescription = label
+                role = Role.Button
+                if (!enabled) {
+                    disabled()
+                } else {
+                    onClick(label = label) {
+                        if (voiceState == VoiceState.IDLE) currentOnStart() else currentOnStop()
+                        true
+                    }
+                }
+            }
+            .focusable(enabled)
+            .pointerInput(enabled) {
+                if (!enabled) return@pointerInput
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    currentOnStart()
+                    try {
+                        waitForUpOrCancellation()
+                    } finally {
+                        currentOnStop()
+                    }
+                }
+            }
+            .testTag("remote_voice_hold"),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Rounded.Mic, contentDescription = null, modifier = Modifier.size(28.dp))
+            Text(status, style = MaterialTheme.typography.titleMedium)
         }
     }
 }

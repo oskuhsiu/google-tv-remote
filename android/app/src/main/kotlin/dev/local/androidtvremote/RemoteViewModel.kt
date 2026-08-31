@@ -19,6 +19,7 @@ class RemoteViewModel(application: Application) : AndroidViewModel(application) 
     val remoteState: StateFlow<RemoteState> = controller.state
     val discoveredCandidates: StateFlow<List<TvCandidate>> = controller.discoveredCandidates
     val floatingEnabled: StateFlow<Boolean> = runtime.floatingPreferences.enabled
+    val voiceState: StateFlow<VoiceState> = controller.voiceState
 
     private val mutableManualHost = MutableStateFlow("")
     val manualHost: StateFlow<String> = mutableManualHost.asStateFlow()
@@ -31,6 +32,7 @@ class RemoteViewModel(application: Application) : AndroidViewModel(application) 
 
     private val lifecycleMutex = Mutex()
     private var connectionJob: Job? = null
+    private var voiceJob: Job? = null
 
     fun updateManualHost(value: String) {
         mutableManualHost.value = value.trimStart().take(255)
@@ -82,6 +84,27 @@ class RemoteViewModel(application: Application) : AndroidViewModel(application) 
             showTransientError(error)
             throw error
         }
+    }
+
+    fun startVoice() {
+        if (voiceJob?.isActive == true) return
+        voiceJob = viewModelScope.launch {
+            try {
+                controller.startVoice()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                showTransientError(error)
+            }
+        }
+    }
+
+    fun stopVoice() {
+        viewModelScope.launch { controller.stopVoice() }
+    }
+
+    fun voicePermissionDenied() {
+        mutableTransientError.value = RemoteError.VOICE_PERMISSION_DENIED
     }
 
     fun cancelConnection() = disconnect()
@@ -156,6 +179,7 @@ class RemoteViewModel(application: Application) : AndroidViewModel(application) 
 
     override fun onCleared() {
         connectionJob?.cancel()
+        voiceJob?.cancel()
         super.onCleared()
     }
 }

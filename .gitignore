@@ -14,6 +14,9 @@
 *.pdf
 *.doc
 *.docx
+handoff.md
+AGENTS.md
+ARCHITECTURE.md
 
 # Public repository documents kept intentionally
 !/README.md

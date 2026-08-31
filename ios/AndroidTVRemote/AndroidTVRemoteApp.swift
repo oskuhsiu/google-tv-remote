@@ -36,7 +36,7 @@ struct AndroidTVRemoteApp: App {
         let identityStore = IdentityStore()
         let defaults = UserDefaults.standard
         let model = AppModel(
-            discovery: UnavailableDiscoveryService(),
+            discovery: BonjourDiscoveryService(),
             session: AndroidTVRemoteAdapter(identityStore: identityStore),
             identity: identityStore,
             store: LastTvStore(),
@@ -79,7 +79,7 @@ struct AndroidTVRemoteApp: App {
                     case .background:
                         model.enterBackground()
                     case .inactive:
-                        break
+                        model.enterInactive()
                     @unknown default:
                         break
                     }

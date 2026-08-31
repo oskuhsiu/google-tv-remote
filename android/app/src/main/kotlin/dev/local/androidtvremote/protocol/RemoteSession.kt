@@ -8,6 +8,8 @@ import java.io.OutputStream
 import java.net.SocketTimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.async
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,29 +42,143 @@ class RemoteSession private constructor(
     private val closed = AtomicBoolean(false)
     private var readerJob: Job? = null
     private var activeFeatures = CLIENT_FEATURES
+    private val voiceMutex = Mutex()
+    private var pendingVoiceBegin: CompletableDeferred<Int>? = null
+    private val voiceGate = VoiceSessionGate()
+    private var voiceEndSessionId: Int? = null
+    private var voiceEndSignal: CompletableDeferred<Unit>? = null
 
     val peerFingerprint: String
         get() = connection.peerFingerprint
 
+    val supportsVoice: Boolean
+        get() = activeFeatures and FEATURE_VOICE != 0
+
     suspend fun send(command: RemoteCommand, action: RemoteKeyAction = RemoteKeyAction.SHORT) {
         check(!closed.get()) { "Remote session is closed" }
-        val message = RemoteMessageFactory.key(command, action)
+        sendWithTimeout(
+            message = RemoteMessageFactory.key(command, action),
+            timeoutMillis = KEY_SEND_TIMEOUT_MILLIS,
+            timeoutMessage = "Remote key write timed out",
+        )
+    }
+
+    private suspend fun sendWithTimeout(
+        message: RemoteMessage,
+        timeoutMillis: Long,
+        timeoutMessage: String,
+    ) {
         withContext(NonCancellable) {
             supervisorScope {
                 val sendJob = async(start = CoroutineStart.UNDISPATCHED) {
                     runCatching { writer.send(message) }
                 }
-                val outcome = withTimeoutOrNull(KEY_SEND_TIMEOUT_MILLIS) {
+                val outcome = withTimeoutOrNull(timeoutMillis) {
                     sendJob.await()
                 }
                 if (outcome == null) {
                     runCatching { connection.socket.close() }
                     sendJob.cancelAndJoin()
-                    throw SocketTimeoutException("Remote key write timed out")
+                    throw SocketTimeoutException(timeoutMessage)
                 }
                 outcome.getOrThrow()
             }
         }
+    }
+
+    suspend fun beginVoice(): Int {
+        check(!closed.get()) { "Remote session is closed" }
+        check(supportsVoice) { "TV did not negotiate voice support" }
+        val waiter = CompletableDeferred<Int>()
+        voiceMutex.withLock {
+            voiceGate.startWaiting()
+            pendingVoiceBegin = waiter
+            voiceEndSessionId = null
+            voiceEndSignal = null
+        }
+        try {
+            sendWithTimeout(
+                RemoteMessageFactory.search(),
+                VOICE_SEND_TIMEOUT_MILLIS,
+                "Voice search write timed out",
+            )
+            val sessionId = withTimeoutOrNull(VOICE_BEGIN_TIMEOUT_MILLIS) { waiter.await() }
+                ?: throw SocketTimeoutException("TV did not begin a voice session")
+            voiceMutex.withLock { pendingVoiceBegin = null }
+            try {
+                sendWithTimeout(
+                    RemoteMessageFactory.voiceBegin(sessionId),
+                    VOICE_SEND_TIMEOUT_MILLIS,
+                    "Voice begin write timed out",
+                )
+            } catch (error: Throwable) {
+                withContext(NonCancellable) {
+                    val shouldEnd = voiceMutex.withLock {
+                        voiceGate.takeEnd(sessionId).also { completeVoiceEndLocked(sessionId) }
+                    }
+                    if (shouldEnd) runCatching { sendVoiceEndMessage(sessionId) }
+                }
+                throw error
+            }
+            return sessionId
+        } finally {
+            withContext(NonCancellable) {
+                val orphanedSessionId = voiceMutex.withLock {
+                    if (pendingVoiceBegin === waiter) {
+                        pendingVoiceBegin = null
+                        voiceGate.cancelAndTakeActive()?.also(::completeVoiceEndLocked)
+                    } else {
+                        null
+                    }
+                }
+                orphanedSessionId?.let { sessionId ->
+                    runCatching {
+                        sendWithTimeout(
+                            RemoteMessageFactory.voiceBegin(sessionId),
+                            VOICE_SEND_TIMEOUT_MILLIS,
+                            "Voice begin write timed out",
+                        )
+                    }
+                    runCatching { sendVoiceEndMessage(sessionId) }
+                }
+            }
+        }
+    }
+
+    suspend fun sendVoicePayload(sessionId: Int, samples: ByteArray) {
+        val isActive = voiceMutex.withLock { voiceGate.isActive(sessionId) }
+        if (!isActive) return
+        sendWithTimeout(
+            RemoteMessageFactory.voicePayload(sessionId, samples),
+            VOICE_SEND_TIMEOUT_MILLIS,
+            "Voice payload write timed out",
+        )
+    }
+
+    suspend fun awaitVoiceEnd(sessionId: Int) {
+        val signal = voiceMutex.withLock {
+            check(voiceEndSessionId == sessionId) { "Voice session is not active" }
+            checkNotNull(voiceEndSignal)
+        }
+        signal.await()
+    }
+
+    suspend fun endVoice(sessionId: Int) {
+        val shouldSend = voiceMutex.withLock {
+            voiceGate.takeEnd(sessionId).also { ended ->
+                if (ended) completeVoiceEndLocked(sessionId)
+            }
+        }
+        if (shouldSend) sendVoiceEndMessage(sessionId)
+    }
+
+    private suspend fun sendVoiceEndMessage(sessionId: Int) {
+        if (closed.get()) return
+        sendWithTimeout(
+            RemoteMessageFactory.voiceEnd(sessionId),
+            VOICE_SEND_TIMEOUT_MILLIS,
+            "Voice end write timed out",
+        )
     }
 
     private suspend fun handshake() {
@@ -85,6 +201,7 @@ class RemoteSession private constructor(
                 if (!closed.get()) failure = error
             } finally {
                 if (!closed.getAndSet(true)) {
+                    resetVoiceState(failure ?: EOFException("TV closed the remote connection"))
                     connection.socket.close()
                     onLost(failure)
                 }
@@ -95,7 +212,7 @@ class RemoteSession private constructor(
     private suspend fun handle(message: RemoteMessage): Boolean {
         when {
             message.hasRemoteConfigure() -> {
-                activeFeatures = activeFeatures and message.remoteConfigure.code1
+                activeFeatures = negotiatedFeatures(message.remoteConfigure.code1)
                 writer.send(
                     RemoteMessage.newBuilder()
                         .setRemoteConfigure(
@@ -125,6 +242,21 @@ class RemoteSession private constructor(
             message.hasRemoteStart() -> {
                 return true
             }
+
+            message.hasRemoteVoiceBegin() -> voiceMutex.withLock {
+                val waiter = pendingVoiceBegin
+                if (waiter?.isActive == true && voiceGate.acceptBegin(message.remoteVoiceBegin.sessionId)) {
+                    voiceEndSessionId = message.remoteVoiceBegin.sessionId
+                    voiceEndSignal = CompletableDeferred()
+                    waiter.complete(message.remoteVoiceBegin.sessionId)
+                }
+            }
+
+            message.hasRemoteVoiceEnd() -> voiceMutex.withLock {
+                if (voiceGate.takeEnd(message.remoteVoiceEnd.sessionId)) {
+                    completeVoiceEndLocked(message.remoteVoiceEnd.sessionId)
+                }
+            }
         }
         return false
     }
@@ -147,9 +279,25 @@ class RemoteSession private constructor(
         val job = readerJob
         readerJob = null
         if (!closed.getAndSet(true)) {
+            resetVoiceState(CancellationException("Remote session closed"))
             withContext(Dispatchers.IO) { runCatching { connection.socket.close() } }
         }
         job?.cancelAndJoin()
+    }
+
+    private suspend fun resetVoiceState(cause: Throwable) {
+        voiceMutex.withLock {
+            pendingVoiceBegin?.completeExceptionally(cause)
+            pendingVoiceBegin = null
+            voiceGate.reset()
+            voiceEndSignal?.completeExceptionally(cause)
+            voiceEndSignal = null
+            voiceEndSessionId = null
+        }
+    }
+
+    private fun completeVoiceEndLocked(sessionId: Int) {
+        if (voiceEndSessionId == sessionId) voiceEndSignal?.complete(Unit)
     }
 
     suspend fun closeAfterEndingLongPress(command: RemoteCommand?) {
@@ -179,11 +327,16 @@ class RemoteSession private constructor(
     companion object {
         private const val FEATURE_PING = 1 shl 0
         private const val FEATURE_KEY = 1 shl 1
+        internal const val FEATURE_VOICE = 1 shl 3
         private const val FEATURE_POWER = 1 shl 5
         private const val FEATURE_VOLUME = 1 shl 6
-        private const val CLIENT_FEATURES = FEATURE_PING or FEATURE_KEY or FEATURE_POWER or FEATURE_VOLUME
+        internal const val CLIENT_FEATURES =
+            FEATURE_PING or FEATURE_KEY or FEATURE_VOICE or FEATURE_POWER or FEATURE_VOLUME
+        internal fun negotiatedFeatures(tvFeatures: Int): Int = CLIENT_FEATURES and tvFeatures
         private const val KEY_SEND_TIMEOUT_MILLIS = 500L
         private const val END_LONG_CLOSE_TIMEOUT_MILLIS = 500L
+        private const val VOICE_BEGIN_TIMEOUT_MILLIS = 2_000L
+        private const val VOICE_SEND_TIMEOUT_MILLIS = 1_000L
 
         suspend fun connect(
             host: String,
@@ -203,6 +356,41 @@ class RemoteSession private constructor(
                 throw error
             }
         }
+    }
+}
+
+internal class VoiceSessionGate {
+    private var waiting = false
+    private var activeSessionId: Int? = null
+
+    fun startWaiting() {
+        check(!waiting && activeSessionId == null) { "Voice session is already active" }
+        waiting = true
+    }
+
+    fun acceptBegin(sessionId: Int): Boolean {
+        if (!waiting || activeSessionId != null) return false
+        waiting = false
+        activeSessionId = sessionId
+        return true
+    }
+
+    fun cancelAndTakeActive(): Int? {
+        waiting = false
+        return activeSessionId.also { activeSessionId = null }
+    }
+
+    fun isActive(sessionId: Int): Boolean = activeSessionId == sessionId
+
+    fun takeEnd(sessionId: Int): Boolean {
+        if (activeSessionId != sessionId) return false
+        activeSessionId = null
+        return true
+    }
+
+    fun reset() {
+        waiting = false
+        activeSessionId = null
     }
 }
 

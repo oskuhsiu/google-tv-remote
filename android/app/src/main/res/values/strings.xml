@@ -24,6 +24,11 @@
     <string name="reconnecting">Reconnecting…</string>
     <string name="disconnect">Disconnect</string>
     <string name="remote_controls">Remote controls</string>
+    <string name="hold_to_talk">Hold to talk</string>
+    <string name="voice_starting">Starting voice search…</string>
+    <string name="voice_listening">Listening… release to send</string>
+    <string name="voice_not_supported">Voice search is not supported by this TV.</string>
+    <string name="voice_permission_ready">Microphone ready. Hold the button again to talk.</string>
     <string name="up">Up</string>
     <string name="down">Down</string>
     <string name="left">Left</string>

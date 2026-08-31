@@ -1,6 +1,8 @@
 package dev.local.androidtvremote
 
 import android.content.Context
+import dev.local.androidtvremote.audio.AudioRecordVoiceCapture
+import dev.local.androidtvremote.audio.VoiceAudioCapture
 import dev.local.androidtvremote.discovery.TvDiscovery
 import dev.local.androidtvremote.protocol.ClientIdentityRejectedException
 import dev.local.androidtvremote.protocol.PairingClient
@@ -18,9 +20,13 @@ import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
 import java.net.SocketException
 import java.net.UnknownHostException
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.net.ssl.SSLException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -33,6 +39,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 class RemoteOperationException(
     val error: RemoteError,
@@ -42,6 +49,9 @@ class RemoteOperationException(
 class AndroidRemoteController(
     context: Context,
     private val scope: CoroutineScope,
+    private val voiceCaptureFactory: () -> VoiceAudioCapture = {
+        AudioRecordVoiceCapture(context.applicationContext)
+    },
 ) : RemoteController {
     private val identityStore = IdentityStore()
     private val lastTvStore = LastTvStore(context.applicationContext)
@@ -53,6 +63,8 @@ class AndroidRemoteController(
     private val mutableState = MutableStateFlow<RemoteState>(RemoteState.Idle)
     override val state: StateFlow<RemoteState> = mutableState.asStateFlow()
     override val discoveredCandidates: StateFlow<List<TvCandidate>> = tvDiscovery.devices
+    private val mutableVoiceState = MutableStateFlow(VoiceState.UNAVAILABLE)
+    override val voiceState: StateFlow<VoiceState> = mutableVoiceState.asStateFlow()
 
     private var rememberedRecord: LastTvRecord? = null
     private var pairing: PendingPairing? = null
@@ -61,6 +73,7 @@ class AndroidRemoteController(
     private var remoteSession: RemoteSession? = null
     private var activeSessionToken: Any? = null
     private var activeLongPress: ActiveLongPress? = null
+    private var activeVoiceRun: ActiveVoiceRun? = null
     private var isForeground = false
 
     init {
@@ -84,6 +97,7 @@ class AndroidRemoteController(
     }
 
     override suspend fun enterForeground() {
+        stopVoiceAndAwait()
         lifecycleMutex.withLock {
             val record = refreshRememberedRecordLocked()
             when (ForegroundPolicy.action(isForeground, record != null)) {
@@ -103,6 +117,7 @@ class AndroidRemoteController(
     }
 
     override suspend fun connect(candidate: TvCandidate) {
+        stopVoiceAndAwait()
         lifecycleMutex.withLock {
             tvDiscovery.stop()
             closeTransportsLocked()
@@ -121,6 +136,7 @@ class AndroidRemoteController(
     }
 
     override suspend fun connectRemembered() {
+        stopVoiceAndAwait()
         lifecycleMutex.withLock {
             tvDiscovery.stop()
             closeTransportsLocked()
@@ -216,7 +232,110 @@ class AndroidRemoteController(
         }
     }
 
-    override suspend fun disconnect() {
+    override suspend fun startVoice() {
+        val run = lifecycleMutex.withLock {
+            if (mutableVoiceState.value == VoiceState.UNAVAILABLE) {
+                throw RemoteOperationException(RemoteError.VOICE_SESSION_FAILED)
+            }
+            if (activeVoiceRun != null) return
+            val session = remoteSession
+                ?.takeIf { mutableState.value is RemoteState.Connected && it.supportsVoice }
+                ?: throw RemoteOperationException(RemoteError.VOICE_SESSION_FAILED)
+            ActiveVoiceRun(session).also {
+                activeVoiceRun = it
+                mutableVoiceState.value = VoiceState.STARTING
+            }
+        }
+
+        var failure: Throwable? = null
+        try {
+            val sessionId = run.session.beginVoice()
+            run.sessionId = sessionId
+            val capture = voiceCaptureFactory()
+            val shouldCapture = lifecycleMutex.withLock {
+                if (activeVoiceRun !== run || run.stopRequested.get()) {
+                    false
+                } else {
+                    run.capture = capture
+                    mutableVoiceState.value = VoiceState.LISTENING
+                    true
+                }
+            }
+            if (shouldCapture) {
+                coroutineScope {
+                    val captureJob = launch {
+                        capture.capture { samples ->
+                            if (!run.tvEnded.get()) {
+                                run.session.sendVoicePayload(sessionId, samples)
+                            }
+                        }
+                    }
+                    val remoteEndJob = launch {
+                        try {
+                            run.session.awaitVoiceEnd(sessionId)
+                            run.tvEnded.set(true)
+                            capture.stop()
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Throwable) {
+                            capture.stop()
+                            throw error
+                        }
+                    }
+                    try {
+                        captureJob.join()
+                    } finally {
+                        capture.stop()
+                        withContext(NonCancellable) {
+                            captureJob.cancelAndJoin()
+                            remoteEndJob.cancelAndJoin()
+                        }
+                    }
+                }
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            failure = error
+        } finally {
+            withContext(NonCancellable) {
+                try {
+                    run.capture?.stop()
+                    run.sessionId?.let { sessionId ->
+                        runCatching { run.session.endVoice(sessionId) }
+                    }
+                    lifecycleMutex.withLock {
+                        if (activeVoiceRun === run) {
+                            activeVoiceRun = null
+                            mutableVoiceState.value = voiceStateFor(remoteSession)
+                        }
+                    }
+                } finally {
+                    run.finished.complete(Unit)
+                }
+            }
+        }
+        failure?.takeUnless { run.stopRequested.get() }?.let { error ->
+            throw RemoteOperationException(voiceFailureError(error), error)
+        }
+    }
+
+    override suspend fun stopVoice() {
+        requestVoiceStop()?.capture?.stop()
+    }
+
+    private suspend fun stopVoiceAndAwait() {
+        val run = requestVoiceStop() ?: return
+        run.capture?.stop()
+        withTimeoutOrNull(VOICE_TEARDOWN_TIMEOUT_MILLIS) { run.finished.await() }
+    }
+
+    private suspend fun requestVoiceStop(): ActiveVoiceRun? = lifecycleMutex.withLock {
+        activeVoiceRun?.also { it.stopRequested.set(true) }
+    }
+
+    override suspend fun disconnect() = withContext(NonCancellable) {
+        stopVoiceAndAwait()
         lifecycleMutex.withLock {
             pairedDraft = null
             mutableState.value = RemoteState.Disconnected(rememberedRecord?.device)
@@ -225,7 +344,8 @@ class AndroidRemoteController(
         }
     }
 
-    override suspend fun forget() {
+    override suspend fun forget() = withContext(NonCancellable) {
+        stopVoiceAndAwait()
         lifecycleMutex.withLock {
             closeTransportsLocked()
             lastTvStore.clear()
@@ -237,7 +357,8 @@ class AndroidRemoteController(
         }
     }
 
-    override suspend fun enterBackground() {
+    override suspend fun enterBackground() = withContext(NonCancellable) {
+        stopVoiceAndAwait()
         lifecycleMutex.withLock {
             isForeground = false
             tvDiscovery.stop()
@@ -252,6 +373,7 @@ class AndroidRemoteController(
         tvDiscovery.stop()
         pairingTimeoutJob?.cancel()
         scope.launch(Dispatchers.IO + NonCancellable) {
+            stopVoiceAndAwait()
             lifecycleMutex.withLock {
                 pairedDraft = null
                 closeTransportsLocked()
@@ -273,6 +395,7 @@ class AndroidRemoteController(
             rememberedRecord = updated
             remoteSession = opened
             mutableState.value = RemoteState.Connected(updated.device)
+            mutableVoiceState.value = voiceStateFor(opened)
         } catch (error: CancellationException) {
             activeSessionToken = null
             throw error
@@ -347,10 +470,13 @@ class AndroidRemoteController(
             scope = scope,
             onLost = { failure ->
                 scope.launch {
+                    val isCurrentSession = lifecycleMutex.withLock { activeSessionToken === token }
+                    if (isCurrentSession) stopVoice()
                     lifecycleMutex.withLock {
                         if (activeSessionToken === token) {
                             activeSessionToken = null
                             remoteSession = null
+                            mutableVoiceState.value = VoiceState.UNAVAILABLE
                             activeLongPress = null
                             mutableState.value = RemoteState.Failed(
                                 rememberedRecord?.device,
@@ -396,6 +522,7 @@ class AndroidRemoteController(
             remoteSession = opened
             pairedDraft = null
             mutableState.value = RemoteState.Connected(device)
+            mutableVoiceState.value = voiceStateFor(opened)
         } catch (error: CancellationException) {
             activeSessionToken = null
             throw error
@@ -469,6 +596,7 @@ class AndroidRemoteController(
         activeLongPress = null
         activeSessionToken = null
         remoteSession = null
+        mutableVoiceState.value = VoiceState.UNAVAILABLE
         withContext(NonCancellable) {
             withContext(Dispatchers.IO) { pairingToClose?.close() }
             remoteToClose?.closeAfterEndingLongPress(
@@ -513,11 +641,32 @@ class AndroidRemoteController(
         val session: RemoteSession,
     )
 
+    private class ActiveVoiceRun(
+        val session: RemoteSession,
+    ) {
+        val stopRequested = AtomicBoolean(false)
+        val tvEnded = AtomicBoolean(false)
+        val finished = CompletableDeferred<Unit>()
+        @Volatile var sessionId: Int? = null
+        @Volatile var capture: VoiceAudioCapture? = null
+    }
+
+    private fun voiceStateFor(session: RemoteSession?): VoiceState =
+        if (session?.supportsVoice == true && mutableState.value is RemoteState.Connected) {
+            VoiceState.IDLE
+        } else {
+            VoiceState.UNAVAILABLE
+        }
+
     companion object {
         private const val CLIENT_NAME = "TV Remote"
         private const val PAIRING_INPUT_TIMEOUT_MILLIS = 60_000L
+        private const val VOICE_TEARDOWN_TIMEOUT_MILLIS = 5_500L
     }
 }
+
+internal fun voiceFailureError(error: Throwable): RemoteError =
+    if (error is SecurityException) RemoteError.VOICE_PERMISSION_DENIED else RemoteError.VOICE_SESSION_FAILED
 
 private fun LastTvRecord.asCandidate(): TvCandidate = TvCandidate(
     locatorKey = bonjourLocatorKey ?: "remembered",
