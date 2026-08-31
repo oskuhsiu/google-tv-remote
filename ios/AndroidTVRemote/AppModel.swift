@@ -8,6 +8,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var diagnosticMessage: String?
     @Published private(set) var keepReadyEnabled: Bool
     @Published private(set) var keepAliveStatus: KeepAliveStatus
+    @Published private(set) var voiceState: VoiceState = .unavailable
+    @Published private(set) var voiceMessage: String?
 
     private let discovery: DiscoveryControlling
     private let session: RemoteSessionControlling
@@ -23,6 +25,7 @@ final class AppModel: ObservableObject {
     private var reconnectAttempt = 0
     private var reconnectTask: Task<Void, Never>?
     private var reconnectFailureReason: RemoteError?
+    private var microphonePermissionTask: Task<Void, Never>?
 
     var canConnectRemembered: Bool {
         rememberedRecord != nil && !securityStoreBlocked
@@ -84,6 +87,15 @@ final class AppModel: ObservableObject {
         session.onEvent = { [weak self] event in
             self?.handleSessionEvent(event)
         }
+        session.onVoiceStateChanged = { [weak self] state in
+            self?.voiceState = state
+            if state == .listening {
+                self?.voiceMessage = nil
+            }
+        }
+        session.onVoiceError = { [weak self] error in
+            self?.handleVoiceError(error)
+        }
         backgroundKeepAlive.onStatusChanged = { [weak self] status in
             self?.keepAliveStatus = status
         }
@@ -133,6 +145,7 @@ final class AppModel: ObservableObject {
 
     func enterBackground() {
         guard sceneIsActive else { return }
+        stopVoice()
         sceneIsActive = false
         discovery.stop()
 
@@ -168,6 +181,7 @@ final class AppModel: ObservableObject {
 
     func disconnect() {
         guard sceneIsActive else { return }
+        stopVoice()
         disconnectedByUser = true
         sessionEventsAllowed = false
         cancelReconnect()
@@ -178,6 +192,7 @@ final class AppModel: ObservableObject {
     }
 
     func forget() {
+        stopVoice()
         sessionEventsAllowed = false
         cancelReconnect()
         discovery.stop()
@@ -248,6 +263,48 @@ final class AppModel: ObservableObject {
         session.send(command: command, action: action)
     }
 
+    func startVoice() {
+        guard case .connected = state,
+              voiceState == .idle,
+              microphonePermissionTask == nil else {
+            return
+        }
+
+        voiceMessage = nil
+        voiceState = .starting
+        microphonePermissionTask = Task { [weak self] in
+            let granted = await MicrophonePermission.request()
+            guard let self else { return }
+            let wasCancelled = Task.isCancelled
+            self.microphonePermissionTask = nil
+            guard !wasCancelled,
+                  case .connected = self.state,
+                  self.voiceState == .starting else {
+                return
+            }
+            guard granted else {
+                self.voiceState = .idle
+                self.voiceMessage = "Allow microphone access in Settings to use voice search."
+                return
+            }
+            self.session.startVoice()
+        }
+    }
+
+    func stopVoice() {
+        let wasRequestingPermission = microphonePermissionTask != nil
+        microphonePermissionTask?.cancel()
+        microphonePermissionTask = nil
+        session.stopVoice()
+        if wasRequestingPermission, case .connected = state, voiceState == .starting {
+            voiceState = .idle
+        }
+    }
+
+    func enterInactive() {
+        stopVoice()
+    }
+
     @discardableResult
     func sendWidgetCommand(_ command: WidgetRemoteCommand) -> Bool {
         guard case .connected = state, widgetSessionIsReachable else { return false }
@@ -285,6 +342,17 @@ final class AppModel: ObservableObject {
 
     private func shouldReconnect(after reason: RemoteError) -> Bool {
         reason == .networkUnreachable || reason == .connectionLost
+    }
+
+    private func handleVoiceError(_ error: RemoteError) {
+        switch error {
+        case .voicePermissionDenied:
+            voiceMessage = "Allow microphone access in Settings to use voice search."
+        case .voiceSessionFailed:
+            voiceMessage = "Voice search could not start. Try again."
+        default:
+            voiceMessage = "Voice search is unavailable. Try again."
+        }
     }
 
     private func scheduleReconnect(record: LastTvRecord, reason: RemoteError) {

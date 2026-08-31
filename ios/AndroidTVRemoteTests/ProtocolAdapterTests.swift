@@ -74,8 +74,8 @@ final class ProtocolAdapterTests: XCTestCase {
         let first = Data([0x08, 0x01])
         let second = Data(repeating: 0xaa, count: 130)
 
-        try await writer.send(payload: first)
-        try await writer.send(payload: second)
+        try writer.send(payload: first)
+        try writer.send(payload: second)
 
         XCTAssertEqual(recorder.frames, [FrameEncoder.frame(first), FrameEncoder.frame(second)])
     }

@@ -399,11 +399,15 @@ private final class RecordingDiscovery: DiscoveryControlling {
 @MainActor
 private final class RecordingSession: RemoteSessionControlling {
     var onEvent: ((RemoteSessionEvent) -> Void)?
+    var onVoiceStateChanged: ((VoiceState) -> Void)?
+    var onVoiceError: ((RemoteError) -> Void)?
     var connectedRecords: [LastTvRecord] = []
     var disconnectCount = 0
     func connect(to record: LastTvRecord) { connectedRecords.append(record) }
     func disconnect() { disconnectCount += 1 }
     func send(command: RemoteCommand, action: RemoteKeyAction) {}
+    func startVoice() {}
+    func stopVoice() {}
     func emit(_ event: RemoteSessionEvent) { onEvent?(event) }
 }
 

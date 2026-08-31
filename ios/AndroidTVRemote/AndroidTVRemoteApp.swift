@@ -79,7 +79,7 @@ struct AndroidTVRemoteApp: App {
                     case .background:
                         model.enterBackground()
                     case .inactive:
-                        break
+                        model.enterInactive()
                     @unknown default:
                         break
                     }

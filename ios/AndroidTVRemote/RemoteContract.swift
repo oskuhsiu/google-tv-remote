@@ -57,6 +57,13 @@ enum RemoteKeyAction: Equatable, Sendable {
     case endLong
 }
 
+enum VoiceState: Equatable, Sendable {
+    case unavailable
+    case idle
+    case starting
+    case listening
+}
+
 enum RemotePressBehavior: Equatable, Sendable {
     case single
     case longPress
@@ -284,9 +291,13 @@ protocol DiscoveryControlling: AnyObject {
 @MainActor
 protocol RemoteSessionControlling: AnyObject {
     var onEvent: ((RemoteSessionEvent) -> Void)? { get set }
+    var onVoiceStateChanged: ((VoiceState) -> Void)? { get set }
+    var onVoiceError: ((RemoteError) -> Void)? { get set }
     func connect(to record: LastTvRecord)
     func disconnect()
     func send(command: RemoteCommand, action: RemoteKeyAction)
+    func startVoice()
+    func stopVoice()
 }
 
 @MainActor

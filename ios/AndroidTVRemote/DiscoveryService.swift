@@ -16,7 +16,11 @@ final class UnavailableDiscoveryService: DiscoveryControlling {
 @MainActor
 final class UnavailableRemoteSession: RemoteSessionControlling {
     var onEvent: ((RemoteSessionEvent) -> Void)?
+    var onVoiceStateChanged: ((VoiceState) -> Void)?
+    var onVoiceError: ((RemoteError) -> Void)?
     func connect(to record: LastTvRecord) {}
     func disconnect() {}
     func send(command: RemoteCommand, action: RemoteKeyAction) {}
+    func startVoice() {}
+    func stopVoice() {}
 }

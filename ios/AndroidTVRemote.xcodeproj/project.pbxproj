@@ -39,6 +39,7 @@
 		9BAD5AF8EC7540F3B1B48403 /* RemoteContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4497F79AED9F60A60F10B319 /* RemoteContract.swift */; };
 		A0D3D6269DF63CFDB8DA8241 /* OpenCompactRemoteIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6B95396C16114EA21A94728 /* OpenCompactRemoteIntent.swift */; };
 		A55FBCC3953E622CD21D2297 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 0C43888BCFA60367C15CB02E /* Localizable.xcstrings */; };
+		A6C8395625AF51964DED67C5 /* VoiceCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E058033E221A9FF762589D8 /* VoiceCapture.swift */; };
 		AAB7AAFB92AAEECCC447C427 /* AndroidTVRemoteControl in Frameworks */ = {isa = PBXBuildFile; productRef = 2D08F26518F02980DB2CAF5F /* AndroidTVRemoteControl */; };
 		B2E328D2329E83D924EB5782 /* OutboundWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13CC06D6E33D1D8D81C42095 /* OutboundWriter.swift */; };
 		CE7BE34D18D4582A3E55AAF1 /* AndroidTVRemoteAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEB7E8296C5D4B7E1D63B45F /* AndroidTVRemoteAdapter.swift */; };
@@ -101,6 +102,7 @@
 		76C63A0912225965186A4C12 /* AndroidTVRemoteControls.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AndroidTVRemoteControls.entitlements; sourceTree = "<group>"; };
 		8283E98FE3D6BD0D82AAB34B /* Info-NoKeepAlive.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "Info-NoKeepAlive.plist"; sourceTree = "<group>"; };
 		89B1E814AADBD099A058FE77 /* WidgetRemoteBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetRemoteBridge.swift; sourceTree = "<group>"; };
+		8E058033E221A9FF762589D8 /* VoiceCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceCapture.swift; sourceTree = "<group>"; };
 		91716277358941BE48DDFBD2 /* AndroidTVRemoteControlsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AndroidTVRemoteControlsBundle.swift; sourceTree = "<group>"; };
 		9474D3D26C7709F9EA7FF10D /* AndroidTVRemoteControl */ = {isa = PBXFileReference; lastKnownFileType = folder; name = AndroidTVRemoteControl; path = Vendor/AndroidTVRemoteControl; sourceTree = SOURCE_ROOT; };
 		9E5FE5248DDCB641F168525B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -226,6 +228,7 @@
 				C94147E89FD6881FB4877D33 /* LastTvStore.swift */,
 				13CC06D6E33D1D8D81C42095 /* OutboundWriter.swift */,
 				4497F79AED9F60A60F10B319 /* RemoteContract.swift */,
+				8E058033E221A9FF762589D8 /* VoiceCapture.swift */,
 				1EB5FA00E161454010855B2D /* WidgetRemoteCommandListener.swift */,
 				B0FB351509D02C42099BD718 /* Generated */,
 				8FF270A107EA207AA2099E2B /* Resources */,
@@ -429,6 +432,7 @@
 				2706038A210CB9BE53967952 /* RemoteWidgetContent.swift in Sources */,
 				736FE9031622B386C26C06BD /* RootView.swift in Sources */,
 				FC6D02E79906082059D9475E /* SendWidgetRemoteCommandIntent.swift in Sources */,
+				A6C8395625AF51964DED67C5 /* VoiceCapture.swift in Sources */,
 				1217614AD04BF46A1A7F0A2F /* WidgetRemoteBridge.swift in Sources */,
 				578BC165A0BFDC077857DB83 /* WidgetRemoteCommandListener.swift in Sources */,
 				432A555D9255D66CC1AE6C3B /* remotemessage.pb.swift in Sources */,
