@@ -22,15 +22,21 @@ struct RemoteView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
-                commandButton("Up", systemImage: "chevron.up", command: .up)
-                Button("OK") { model.send(.select) }
-                    .frame(maxWidth: .infinity, minHeight: 56)
-                    .disabled(!isConnected)
+                RemoteDPad(isEnabled: isConnected, send: model.send)
+                    .frame(maxWidth: .infinity)
 
                 HStack(spacing: 12) {
                     commandButton("Back", systemImage: "chevron.backward", command: .back)
                     commandButton("Home", systemImage: "house", command: .home)
                 }
+
+                if !isConnected {
+                    Button("Cancel", role: .cancel) { model.disconnect() }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                }
+
+                KeepReadyControl(model: model)
             }
         }
         .navigationTitle("Remote")

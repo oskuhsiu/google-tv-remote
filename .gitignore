@@ -2,8 +2,6 @@
 /plan/
 /doc/
 /docs/
-/android-tv-remote-spec/
-/protocol/
 *.md
 *.markdown
 *.mdown
@@ -58,6 +56,7 @@ google-services.json
 
 # iOS / Xcode / Swift
 DerivedData/
+.derivedData*/
 xcuserdata/
 *.xcuserstate
 *.xccheckout

@@ -6,13 +6,18 @@ final class AppModel: ObservableObject {
     @Published private(set) var state: RemoteState = .idle
     @Published private(set) var rememberedRecord: LastTvRecord?
     @Published private(set) var diagnosticMessage: String?
+    @Published private(set) var keepReadyEnabled: Bool
+    @Published private(set) var keepAliveStatus: KeepAliveStatus
 
     private let discovery: DiscoveryControlling
     private let session: RemoteSessionControlling
     private let identity: ClientIdentityValidating
     private let store: LastTvStoring
+    private let backgroundKeepAlive: BackgroundKeepAliveControlling
+    private let persistKeepReady: (Bool) -> Void
     private let retrySleep: (TimeInterval) async throws -> Void
-    private var isActive = false
+    private var sceneIsActive = false
+    private var sessionEventsAllowed = false
     private var disconnectedByUser = false
     private var securityStoreBlocked = false
     private var reconnectAttempt = 0
@@ -23,11 +28,40 @@ final class AppModel: ObservableObject {
         rememberedRecord != nil && !securityStoreBlocked
     }
 
+    var keepReadyAvailable: Bool {
+        backgroundKeepAlive.isAvailable
+    }
+
+    var widgetSnapshot: WidgetRemoteSnapshot {
+        let tvName = rememberedRecord?.name
+        let availability: WidgetRemoteAvailability
+        switch state {
+        case .connected:
+            availability = widgetSessionIsReachable ? .ready : .unavailable
+        case .connecting, .reconnecting:
+            availability = .connecting
+        default:
+            availability = .unavailable
+        }
+        return WidgetRemoteSnapshot(tvName: tvName, availability: availability)
+    }
+
+    private var widgetSessionIsReachable: Bool {
+        sceneIsActive || (
+            keepReadyAvailable &&
+                keepReadyEnabled &&
+                (keepAliveStatus == .starting || keepAliveStatus == .ready)
+        )
+    }
+
     init(
         discovery: DiscoveryControlling,
         session: RemoteSessionControlling,
         identity: ClientIdentityValidating,
         store: LastTvStoring,
+        backgroundKeepAlive: BackgroundKeepAliveControlling? = nil,
+        initialKeepReadyEnabled: Bool = false,
+        persistKeepReady: @escaping (Bool) -> Void = { _ in },
         retrySleep: @escaping (TimeInterval) async throws -> Void = { delay in
             try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
         }
@@ -36,30 +70,51 @@ final class AppModel: ObservableObject {
         self.session = session
         self.identity = identity
         self.store = store
+        let backgroundKeepAlive = backgroundKeepAlive ?? DisabledBackgroundKeepAliveController()
+        self.backgroundKeepAlive = backgroundKeepAlive
+        self.keepReadyEnabled = initialKeepReadyEnabled && backgroundKeepAlive.isAvailable
+        self.keepAliveStatus = backgroundKeepAlive.status
+        self.persistKeepReady = persistKeepReady
         self.retrySleep = retrySleep
 
         discovery.onCandidatesChanged = { [weak self] candidates in
-            guard let self, self.isActive, self.rememberedRecord == nil else { return }
+            guard let self, self.sceneIsActive, self.rememberedRecord == nil else { return }
             self.state = .discovering(candidates)
         }
         session.onEvent = { [weak self] event in
             self?.handleSessionEvent(event)
         }
+        backgroundKeepAlive.onStatusChanged = { [weak self] status in
+            self?.keepAliveStatus = status
+        }
         restoreRememberedTV()
     }
 
     func enterForeground() {
+        let wasActive = sceneIsActive
+        sceneIsActive = true
+        sessionEventsAllowed = true
+        backgroundKeepAlive.stop()
+
         if securityStoreBlocked {
-            isActive = true
             return
         }
+
+        guard !wasActive else { return }
+        switch state {
+        case .connected, .connecting, .reconnecting:
+            disconnectedByUser = false
+            return
+        default:
+            break
+        }
+
         let action = ForegroundPolicy.action(
-            alreadyActive: isActive,
+            alreadyActive: wasActive,
             hasValidPairing: rememberedRecord != nil
         )
         guard action != .none else { return }
 
-        isActive = true
         disconnectedByUser = false
         cancelReconnect()
         switch action {
@@ -77,30 +132,56 @@ final class AppModel: ObservableObject {
     }
 
     func enterBackground() {
-        guard isActive else { return }
-        isActive = false
-        cancelReconnect()
+        guard sceneIsActive else { return }
+        sceneIsActive = false
         discovery.stop()
-        session.disconnect()
-        if let rememberedRecord {
-            state = .disconnected(rememberedRecord.device)
+
+        let isConnected: Bool
+        if case .connected = state {
+            isConnected = true
         } else {
-            state = .idle
+            isConnected = false
+        }
+
+        switch BackgroundSessionPolicy.action(
+            keepReadyEnabled: keepReadyEnabled,
+            keepAliveAvailable: keepReadyAvailable,
+            hasValidPairing: rememberedRecord != nil,
+            isConnected: isConnected,
+            disconnectedByUser: disconnectedByUser
+        ) {
+        case .retainConnectedSession:
+            sessionEventsAllowed = true
+            backgroundKeepAlive.start()
+        case .disconnect:
+            sessionEventsAllowed = false
+            cancelReconnect()
+            backgroundKeepAlive.stop()
+            session.disconnect()
+            if let rememberedRecord {
+                state = .disconnected(rememberedRecord.device)
+            } else {
+                state = .idle
+            }
         }
     }
 
     func disconnect() {
-        guard isActive else { return }
+        guard sceneIsActive else { return }
         disconnectedByUser = true
+        sessionEventsAllowed = false
         cancelReconnect()
         discovery.stop()
+        backgroundKeepAlive.stop()
         session.disconnect()
         state = .disconnected(rememberedRecord?.device)
     }
 
     func forget() {
+        sessionEventsAllowed = false
         cancelReconnect()
         discovery.stop()
+        backgroundKeepAlive.stop()
         session.disconnect()
         do {
             try identity.deleteIdentity()
@@ -114,7 +195,11 @@ final class AppModel: ObservableObject {
         disconnectedByUser = false
         securityStoreBlocked = false
 
-        if ForegroundPolicy.allowsAutomaticDiscovery(isActive: isActive, hasValidPairing: false) {
+        if ForegroundPolicy.allowsAutomaticDiscovery(
+            isActive: sceneIsActive,
+            hasValidPairing: false
+        ) {
+            sessionEventsAllowed = true
             state = .discovering([])
             discovery.start()
         } else {
@@ -123,12 +208,39 @@ final class AppModel: ObservableObject {
     }
 
     func connectRemembered() {
-        guard isActive, !securityStoreBlocked, let rememberedRecord else { return }
+        guard sceneIsActive, !securityStoreBlocked, let rememberedRecord else { return }
         disconnectedByUser = false
+        sessionEventsAllowed = true
         cancelReconnect()
         discovery.stop()
         state = .connecting(rememberedRecord.device)
         session.connect(to: rememberedRecord)
+    }
+
+    func requestCompactRemote() {
+        guard sceneIsActive, canConnectRemembered else { return }
+        switch state {
+        case .connected, .connecting, .reconnecting:
+            return
+        default:
+            connectRemembered()
+        }
+    }
+
+    func setKeepReadyEnabled(_ enabled: Bool) {
+        guard !enabled || keepReadyAvailable else { return }
+        guard keepReadyEnabled != enabled else { return }
+        keepReadyEnabled = enabled
+        persistKeepReady(enabled)
+
+        guard !enabled else { return }
+        backgroundKeepAlive.stop()
+        if !sceneIsActive {
+            sessionEventsAllowed = false
+            cancelReconnect()
+            session.disconnect()
+            state = rememberedRecord.map { .disconnected($0.device) } ?? .idle
+        }
     }
 
     func send(_ command: RemoteCommand, action: RemoteKeyAction = .short) {
@@ -136,15 +248,27 @@ final class AppModel: ObservableObject {
         session.send(command: command, action: action)
     }
 
+    @discardableResult
+    func sendWidgetCommand(_ command: WidgetRemoteCommand) -> Bool {
+        guard case .connected = state, widgetSessionIsReachable else { return false }
+        session.send(command: command.remoteCommand, action: .short)
+        return true
+    }
+
     private func handleSessionEvent(_ event: RemoteSessionEvent) {
-        guard isActive, !disconnectedByUser else { return }
+        guard sessionEventsAllowed, !disconnectedByUser else { return }
         switch event {
         case .connected(let device):
             cancelReconnect()
             state = .connected(device)
+            if !sceneIsActive, keepReadyEnabled {
+                backgroundKeepAlive.start()
+            }
         case .failed(let device, let reason, let recoverable):
             if reason == .pairingRequired, let device {
                 cancelReconnect()
+                backgroundKeepAlive.stop()
+                sessionEventsAllowed = sceneIsActive
                 state = .needsPairing(device)
             } else if shouldReconnect(after: reason),
                       let record = rememberedRecord,
@@ -152,6 +276,8 @@ final class AppModel: ObservableObject {
                 scheduleReconnect(record: record, reason: reason)
             } else {
                 cancelReconnect()
+                backgroundKeepAlive.stop()
+                sessionEventsAllowed = sceneIsActive
                 state = .failed(device, reason: reason, recoverable: recoverable)
             }
         }
@@ -166,6 +292,8 @@ final class AppModel: ObservableObject {
         guard reconnectAttempt < ReconnectPolicy.delays.count else {
             let terminalReason = reconnectFailureReason ?? reason
             cancelReconnect()
+            backgroundKeepAlive.stop()
+            sessionEventsAllowed = sceneIsActive
             state = .failed(record.device, reason: terminalReason, recoverable: true)
             return
         }
@@ -183,7 +311,7 @@ final class AppModel: ObservableObject {
                 return
             }
             guard !Task.isCancelled,
-                  self.isActive,
+                  self.connectionWorkAllowed,
                   !self.disconnectedByUser,
                   self.rememberedRecord == record else {
                 return
@@ -197,6 +325,10 @@ final class AppModel: ObservableObject {
         reconnectTask = nil
         reconnectAttempt = 0
         reconnectFailureReason = nil
+    }
+
+    private var connectionWorkAllowed: Bool {
+        sceneIsActive || (keepReadyEnabled && sessionEventsAllowed && rememberedRecord != nil)
     }
 
     private func restoreRememberedTV() {
@@ -255,5 +387,19 @@ final class AppModel: ObservableObject {
         try identity.deleteIdentity()
         store.clear()
         rememberedRecord = nil
+    }
+}
+
+private extension WidgetRemoteCommand {
+    var remoteCommand: RemoteCommand {
+        switch self {
+        case .up: .up
+        case .down: .down
+        case .left: .left
+        case .right: .right
+        case .select: .select
+        case .back: .back
+        case .home: .home
+        }
     }
 }

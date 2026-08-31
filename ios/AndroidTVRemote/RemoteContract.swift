@@ -1,5 +1,20 @@
 import Foundation
 
+enum AppRoute: Equatable, Sendable {
+    case fullRemote
+    case compactRemote
+
+    static let compactURL = URL(string: "androidtvremote://compact")!
+
+    init?(url: URL) {
+        guard url.scheme?.caseInsensitiveCompare("androidtvremote") == .orderedSame,
+              url.host?.caseInsensitiveCompare("compact") == .orderedSame else {
+            return nil
+        }
+        self = .compactRemote
+    }
+}
+
 enum RemoteCommand: String, CaseIterable, Codable, Sendable {
     case up
     case down
@@ -207,6 +222,37 @@ enum ForegroundPolicy {
     }
 }
 
+enum BackgroundSessionAction: Equatable, Sendable {
+    case disconnect
+    case retainConnectedSession
+}
+
+enum BackgroundSessionPolicy {
+    static func action(
+        keepReadyEnabled: Bool,
+        keepAliveAvailable: Bool,
+        hasValidPairing: Bool,
+        isConnected: Bool,
+        disconnectedByUser: Bool
+    ) -> BackgroundSessionAction {
+        guard keepReadyEnabled,
+              keepAliveAvailable,
+              hasValidPairing,
+              isConnected,
+              !disconnectedByUser else {
+            return .disconnect
+        }
+        return .retainConnectedSession
+    }
+}
+
+enum KeepAliveStatus: Equatable, Sendable {
+    case off
+    case starting
+    case ready
+    case interrupted
+}
+
 enum ReconnectPolicy {
     static let delays: [TimeInterval] = [1, 2, 4]
 }
@@ -241,6 +287,15 @@ protocol RemoteSessionControlling: AnyObject {
     func connect(to record: LastTvRecord)
     func disconnect()
     func send(command: RemoteCommand, action: RemoteKeyAction)
+}
+
+@MainActor
+protocol BackgroundKeepAliveControlling: AnyObject {
+    var isAvailable: Bool { get }
+    var status: KeepAliveStatus { get }
+    var onStatusChanged: ((KeepAliveStatus) -> Void)? { get set }
+    func start()
+    func stop()
 }
 
 @MainActor

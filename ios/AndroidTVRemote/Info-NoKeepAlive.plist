@@ -37,10 +37,6 @@
 	<string>Find and connect to your Android TV on the local network.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Send your voice directly to the connected TV while you hold the Voice button.</string>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>audio</string>
-	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UIRequiresFullScreen</key>

@@ -12,13 +12,21 @@ struct DeviceView: View {
                 Text(record.name).font(.headline)
                 Text("Remembered TV")
                     .foregroundStyle(.secondary)
-                Button("Connect") {
-                    model.connectRemembered()
+                if case .connecting = model.state {
+                    ProgressView("Connecting…")
+                    Button("Cancel", role: .cancel) {
+                        model.disconnect()
+                    }
+                } else {
+                    Button("Connect") {
+                        model.connectRemembered()
+                    }
+                    .disabled(!model.canConnectRemembered)
                 }
-                .disabled(!model.canConnectRemembered)
                 Button("Forget TV", role: .destructive) {
                     model.forget()
                 }
+                KeepReadyControl(model: model)
             } else {
                 ProgressView("Looking for TVs…")
                 Text("Discovery and transport integration are not available in this foundation build.")

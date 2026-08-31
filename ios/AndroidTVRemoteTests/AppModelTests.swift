@@ -18,6 +18,73 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(ReconnectPolicy.delays, [1, 2, 4])
     }
 
+    func testCompactRemoteRouteOnlyAcceptsExpectedURL() {
+        XCTAssertEqual(AppRoute(url: AppRoute.compactURL), .compactRemote)
+        XCTAssertNil(AppRoute(url: URL(string: "androidtvremote://other")!))
+        XCTAssertNil(AppRoute(url: URL(string: "https://example.com/compact")!))
+    }
+
+    func testWidgetReadySnapshotExpiresAfterFiveMinutes() {
+        let confirmedAt = Date(timeIntervalSince1970: 1_000)
+        let ready = WidgetRemoteSnapshot(
+            tvName: "TV",
+            availability: .ready,
+            confirmedAt: confirmedAt
+        )
+
+        XCTAssertEqual(
+            ready.validated(at: confirmedAt.addingTimeInterval(299)).availability,
+            .ready
+        )
+        XCTAssertEqual(
+            ready.validated(at: confirmedAt.addingTimeInterval(300)).availability,
+            .unavailable
+        )
+    }
+
+    func testBackgroundPolicyOnlyRetainsEligibleConnectedSession() {
+        XCTAssertEqual(
+            BackgroundSessionPolicy.action(
+                keepReadyEnabled: true,
+                keepAliveAvailable: true,
+                hasValidPairing: true,
+                isConnected: true,
+                disconnectedByUser: false
+            ),
+            .retainConnectedSession
+        )
+        XCTAssertEqual(
+            BackgroundSessionPolicy.action(
+                keepReadyEnabled: false,
+                keepAliveAvailable: true,
+                hasValidPairing: true,
+                isConnected: true,
+                disconnectedByUser: false
+            ),
+            .disconnect
+        )
+        XCTAssertEqual(
+            BackgroundSessionPolicy.action(
+                keepReadyEnabled: true,
+                keepAliveAvailable: true,
+                hasValidPairing: true,
+                isConnected: false,
+                disconnectedByUser: false
+            ),
+            .disconnect
+        )
+        XCTAssertEqual(
+            BackgroundSessionPolicy.action(
+                keepReadyEnabled: true,
+                keepAliveAvailable: false,
+                hasValidPairing: true,
+                isConnected: true,
+                disconnectedByUser: false
+            ),
+            .disconnect
+        )
+    }
+
     func testPairingCodeRequiresSixHexCharacters() {
         XCTAssertTrue(PairingCodeValidator.isValid("A1b2F0"))
         XCTAssertEqual(PairingCodeValidator.normalized("  a1b2f0\n"), "A1B2F0")
@@ -82,6 +149,31 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(fixture.session.connectedRecords.count, 2)
         XCTAssertEqual(fixture.model.state, .connected(LastTvRecord.valid.device))
+    }
+
+    func testKeepReadyRetainsConnectedSessionInBackground() {
+        let fixture = Fixture(record: .valid, keepReadyEnabled: true)
+        fixture.model.enterForeground()
+        fixture.session.emit(.connected(LastTvRecord.valid.device))
+
+        fixture.model.enterBackground()
+
+        XCTAssertEqual(fixture.keepAlive.startCount, 1)
+        XCTAssertEqual(fixture.session.disconnectCount, 0)
+        XCTAssertEqual(fixture.model.state, .connected(LastTvRecord.valid.device))
+    }
+
+    func testBackgroundWithoutKeepReadyDisconnectsSession() {
+        let fixture = Fixture(record: .valid)
+        fixture.model.enterForeground()
+        fixture.session.emit(.connected(LastTvRecord.valid.device))
+
+        fixture.model.enterBackground()
+
+        XCTAssertEqual(fixture.keepAlive.startCount, 0)
+        XCTAssertEqual(fixture.keepAlive.stopCount, 2)
+        XCTAssertEqual(fixture.session.disconnectCount, 1)
+        XCTAssertEqual(fixture.model.state, .disconnected(LastTvRecord.valid.device))
     }
 
     func testForgetClearsTupleAndStartsDiscoveryWhenActive() throws {
@@ -251,10 +343,12 @@ private final class Fixture {
     let identity: RecordingIdentity
     let store: MemoryStore
     let retrySleeper = RecordingSleeper()
+    let keepAlive = RecordingKeepAlive()
     let model: AppModel
 
     init(
         record: LastTvRecord?,
+        keepReadyEnabled: Bool = false,
         identityFailure: Error? = nil,
         storeFailure: Error? = nil
     ) {
@@ -265,8 +359,31 @@ private final class Fixture {
             session: session,
             identity: identity,
             store: store,
+            backgroundKeepAlive: keepAlive,
+            initialKeepReadyEnabled: keepReadyEnabled,
             retrySleep: retrySleeper.sleep
         )
+    }
+}
+
+@MainActor
+private final class RecordingKeepAlive: BackgroundKeepAliveControlling {
+    let isAvailable = true
+    private(set) var status: KeepAliveStatus = .off
+    var onStatusChanged: ((KeepAliveStatus) -> Void)?
+    var startCount = 0
+    var stopCount = 0
+
+    func start() {
+        startCount += 1
+        status = .ready
+        onStatusChanged?(.ready)
+    }
+
+    func stop() {
+        stopCount += 1
+        status = .off
+        onStatusChanged?(.off)
     }
 }
 

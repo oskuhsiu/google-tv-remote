@@ -1,0 +1,81 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Back" : {
+
+    },
+    "Connected" : {
+
+    },
+    "Connecting…" : {
+
+    },
+    "Control a connected TV without opening the app" : {
+
+    },
+    "Down" : {
+
+    },
+    "Home" : {
+
+    },
+    "Left" : {
+
+    },
+    "Living Room TV" : {
+
+    },
+    "OK" : {
+
+    },
+    "Open app to connect" : {
+
+    },
+    "Open app" : {
+
+    },
+    "Open compact remote" : {
+
+    },
+    "Open remote" : {
+
+    },
+    "Opens compact TV remote" : {
+
+    },
+    "Open the compact TV remote" : {
+
+    },
+    "Remote" : {
+
+    },
+    "Right" : {
+
+    },
+    "Send to TV" : {
+
+    },
+    "Send TV command" : {
+
+    },
+    "Send a command to the connected TV" : {
+
+    },
+    "TV Remote" : {
+
+    },
+    "TV command" : {
+
+    },
+    "The TV is not connected. Open the app to reconnect." : {
+
+    },
+    "The TV remote is unavailable. Open the app and try again." : {
+
+    },
+    "Up" : {
+
+    }
+  },
+  "version" : "1.0"
+}

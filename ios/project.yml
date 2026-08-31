@@ -1,8 +1,12 @@
 name: AndroidTVRemote
+configs:
+  Debug: debug
+  Release: release
+  NoKeepAlive: release
 options:
   bundleIdPrefix: dev.local
   deploymentTarget:
-    iOS: "17.0"
+    iOS: "18.0"
 settings:
   base:
     SWIFT_VERSION: 5.0
@@ -21,12 +25,20 @@ targets:
     platform: iOS
     sources:
       - AndroidTVRemote
+      - Shared
+    entitlements:
+      path: AndroidTVRemote/AndroidTVRemote.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.dev.local.AndroidTVRemote
     dependencies:
       - package: AndroidTVRemoteControl
       - package: SwiftCertificates
         product: X509
       - package: SwiftProtobuf
         product: SwiftProtobuf
+      - target: AndroidTVRemoteControls
+        embed: true
     info:
       path: AndroidTVRemote/Info.plist
       properties:
@@ -34,6 +46,13 @@ targets:
           - _androidtvremote2._tcp
         NSLocalNetworkUsageDescription: Find and connect to your Android TV on the local network.
         NSMicrophoneUsageDescription: Send your voice directly to the connected TV while you hold the Voice button.
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.local.AndroidTVRemote
+            CFBundleURLSchemes:
+              - androidtvremote
+        UIBackgroundModes:
+          - audio
+        UILaunchScreen: {}
         UIRequiresFullScreen: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -41,11 +60,48 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.local.AndroidTVRemote
         PRODUCT_NAME: AndroidTVRemote
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: T9ZD5M42MB
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG BACKGROUND_KEEPALIVE_EXPERIMENTAL"
+        Release:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) BACKGROUND_KEEPALIVE_EXPERIMENTAL"
+        NoKeepAlive:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited)"
+          INFOPLIST_FILE: AndroidTVRemote/Info-NoKeepAlive.plist
     scheme:
       testTargets:
         - AndroidTVRemoteTests
+  AndroidTVRemoteControls:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - AndroidTVRemoteControls
+      - Shared
+    entitlements:
+      path: AndroidTVRemoteControls/AndroidTVRemoteControls.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.dev.local.AndroidTVRemote
+    info:
+      path: AndroidTVRemoteControls/Info.plist
+      properties:
+        CFBundleDisplayName: Remote
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.local.AndroidTVRemote.Controls
+        PRODUCT_NAME: AndroidTVRemoteControls
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: T9ZD5M42MB
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
   AndroidTVRemoteTests:
     type: bundle.unit-test
     platform: iOS
@@ -59,3 +115,13 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/AndroidTVRemote.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/AndroidTVRemote"
         BUNDLE_LOADER: "$(TEST_HOST)"
+
+schemes:
+  AndroidTVRemote-NoKeepAlive:
+    build:
+      targets:
+        AndroidTVRemote: all
+    run:
+      config: NoKeepAlive
+    archive:
+      config: NoKeepAlive
