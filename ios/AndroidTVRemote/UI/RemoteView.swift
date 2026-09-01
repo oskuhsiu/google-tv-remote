@@ -15,6 +15,15 @@ struct RemoteView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
+                    Button {
+                        model.send(.power)
+                    } label: {
+                        Image(systemName: "power")
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("Power")
+                    .disabled(!isConnected)
                     Button("Disconnect") { model.disconnect() }
                 }
 

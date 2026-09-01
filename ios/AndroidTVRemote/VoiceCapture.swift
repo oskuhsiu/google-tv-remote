@@ -13,25 +13,29 @@ enum MicrophonePermission {
 
 final class VoiceCapture: @unchecked Sendable {
     static let sampleRate: Double = 8_000
-    static let chunkByteCount = 8_192
 
     private let audioSession: AVAudioSession
     private let engine: AVAudioEngine
+    private let chunkByteCount: Int
     private let stateLock = NSLock()
 
     private var converter: AVAudioConverter?
-    private var chunker = VoicePCMChunker(chunkByteCount: chunkByteCount)
+    private var chunker: VoicePCMChunker
     private var onChunk: (@Sendable (Data) -> Void)?
     private var onFailure: (@Sendable (Error) -> Void)?
     private var isRunning = false
     private var tapInstalled = false
 
     init(
+        chunkByteCount: Int,
         audioSession: AVAudioSession = .sharedInstance(),
         engine: AVAudioEngine = AVAudioEngine()
     ) {
+        precondition(chunkByteCount > 0)
+        self.chunkByteCount = chunkByteCount
         self.audioSession = audioSession
         self.engine = engine
+        chunker = VoicePCMChunker(chunkByteCount: chunkByteCount)
     }
 
     func start(
@@ -65,7 +69,7 @@ final class VoiceCapture: @unchecked Sendable {
 
         stateLock.lock()
         self.converter = converter
-        chunker = VoicePCMChunker(chunkByteCount: Self.chunkByteCount)
+        chunker = VoicePCMChunker(chunkByteCount: chunkByteCount)
         self.onChunk = onChunk
         self.onFailure = onFailure
         isRunning = true

@@ -18,7 +18,14 @@ interface VoiceAudioCapture {
     fun stop()
 }
 
-class AudioRecordVoiceCapture(context: Context) : VoiceAudioCapture {
+class AudioRecordVoiceCapture(
+    context: Context,
+    private val chunkByteCount: Int,
+) : VoiceAudioCapture {
+    init {
+        require(chunkByteCount > 0)
+    }
+
     private val applicationContext = context.applicationContext
     private val recordLock = Any()
     private var activeRecord: AudioRecord? = null
@@ -37,7 +44,7 @@ class AudioRecordVoiceCapture(context: Context) : VoiceAudioCapture {
             SAMPLE_RATE,
             CHANNEL_CONFIG,
             AUDIO_FORMAT,
-            maxOf(minBufferSize, INTERNAL_BUFFER_BYTES),
+            maxOf(minBufferSize, chunkByteCount * 2),
         )
         if (record.state != AudioRecord.STATE_INITIALIZED) {
             record.release()
@@ -50,8 +57,8 @@ class AudioRecordVoiceCapture(context: Context) : VoiceAudioCapture {
             }
             activeRecord = record
         }
-        val accumulator = PcmChunkAccumulator()
-        val readBuffer = ByteArray(CHUNK_BYTES)
+        val accumulator = PcmChunkAccumulator(chunkByteCount)
+        val readBuffer = ByteArray(chunkByteCount)
         try {
             synchronized(recordLock) {
                 if (stopRequested.get()) return@withContext
@@ -93,16 +100,18 @@ class AudioRecordVoiceCapture(context: Context) : VoiceAudioCapture {
 
     companion object {
         const val SAMPLE_RATE = 8_000
-        const val CHUNK_BYTES = 8_192
-        const val INTERNAL_BUFFER_BYTES = 16 * 1_024
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
     }
 }
 
 class PcmChunkAccumulator(
-    private val chunkSize: Int = AudioRecordVoiceCapture.CHUNK_BYTES,
+    private val chunkSize: Int,
 ) {
+    init {
+        require(chunkSize > 0)
+    }
+
     private val pending = ByteArray(chunkSize)
     private var pendingSize = 0
 

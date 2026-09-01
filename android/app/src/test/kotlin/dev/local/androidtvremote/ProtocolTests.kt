@@ -148,22 +148,23 @@ class ProtocolTests {
     }
 
     @Test
-    fun `pcm accumulator emits 8 KiB chunks and zero pads its tail`() {
-        val accumulator = PcmChunkAccumulator()
-        val first = ByteArray(5_000) { 1 }
-        val second = ByteArray(4_000) { 2 }
+    fun `pcm accumulator emits configured chunks and zero pads its tail`() {
+        val chunkSize = 8
+        val accumulator = PcmChunkAccumulator(chunkSize)
+        val first = ByteArray(5) { 1 }
+        val second = ByteArray(4) { 2 }
 
         assertEquals(0, accumulator.append(first).size)
         val chunks = accumulator.append(second)
         assertEquals(1, chunks.size)
-        assertEquals(8_192, chunks.single().size)
-        assertEquals(1, chunks.single()[4_999].toInt())
-        assertEquals(2, chunks.single()[5_000].toInt())
+        assertEquals(chunkSize, chunks.single().size)
+        assertEquals(1, chunks.single()[4].toInt())
+        assertEquals(2, chunks.single()[5].toInt())
 
         val tail = checkNotNull(accumulator.finish())
-        assertEquals(8_192, tail.size)
-        assertEquals(2, tail[807].toInt())
-        assertEquals(0, tail[808].toInt())
+        assertEquals(chunkSize, tail.size)
+        assertEquals(2, tail[0].toInt())
+        assertEquals(0, tail[1].toInt())
         assertNull(accumulator.finish())
     }
 

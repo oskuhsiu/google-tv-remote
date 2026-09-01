@@ -391,9 +391,9 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
 
         if let capture = run.capture {
             let finalChunk = capture.stop()
-            finishVoice(run, finalChunk: finalChunk, sendEnd: !run.remoteEnded)
+            finishVoice(run, finalChunk: finalChunk, sendEnd: true)
         } else if run.didSendBegin {
-            finishVoice(run, finalChunk: nil, sendEnd: !run.remoteEnded)
+            finishVoice(run, finalChunk: nil, sendEnd: true)
         } else {
             finishVoice(run, finalChunk: nil, sendEnd: false)
         }
@@ -453,7 +453,9 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
                 return
             }
 
-            let capture = VoiceCapture()
+            let capture = VoiceCapture(
+                chunkByteCount: RemotePayloadFactory.maximumVoicePayloadByteCount
+            )
             run.capture = capture
             let generation = run.generation
             try capture.start(
@@ -476,10 +478,10 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
                 onVoiceStateChanged?(.listening)
             }
         } catch is CancellationError {
-            finishVoice(run, finalChunk: nil, sendEnd: run.didSendBegin && !run.remoteEnded)
+            finishVoice(run, finalChunk: nil, sendEnd: run.didSendBegin)
         } catch {
             if run.stopRequested {
-                finishVoice(run, finalChunk: nil, sendEnd: run.didSendBegin && !run.remoteEnded)
+                finishVoice(run, finalChunk: nil, sendEnd: run.didSendBegin)
             } else {
                 failVoice(run)
             }
@@ -515,7 +517,6 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
         guard let run = activeVoiceRun,
               run.generation == generation,
               !run.stopRequested,
-              !run.remoteEnded,
               run.didSendBegin,
               let sessionID = run.sessionID,
               let writer else {
@@ -543,7 +544,7 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
         guard activeVoiceRun === run else { return }
         run.stopRequested = true
         _ = run.capture?.stop()
-        finishVoice(run, finalChunk: nil, sendEnd: run.didSendBegin && !run.remoteEnded)
+        finishVoice(run, finalChunk: nil, sendEnd: run.didSendBegin)
         onVoiceError?(.voiceSessionFailed)
     }
 
@@ -592,7 +593,7 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
         finishVoice(
             run,
             finalChunk: finalChunk,
-            sendEnd: run.didSendBegin && !run.remoteEnded
+            sendEnd: run.didSendBegin
         )
         task?.cancel()
     }
@@ -622,15 +623,6 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
             run.sessionID = message.remoteVoiceBegin.sessionID
             continuation.resume(returning: message.remoteVoiceBegin.sessionID)
         }
-
-        if message.hasRemoteVoiceEnd,
-           let run = activeVoiceRun,
-           run.sessionID == message.remoteVoiceEnd.sessionID {
-            run.remoteEnded = true
-            run.stopRequested = true
-            _ = run.capture?.stop()
-            finishVoice(run, finalChunk: nil, sendEnd: false)
-        }
     }
 
     private func tearDown() {
@@ -646,7 +638,6 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
 private final class VoiceRun {
     let generation: Int
     var stopRequested = false
-    var remoteEnded = false
     var sessionID: Int32?
     var didSendBegin = false
     var capture: VoiceCapture?

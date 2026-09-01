@@ -10,6 +10,7 @@ import dev.local.androidtvremote.protocol.PairingClient
 import dev.local.androidtvremote.protocol.PairingCode
 import dev.local.androidtvremote.protocol.PairingRejectedException
 import dev.local.androidtvremote.protocol.PairingSession
+import dev.local.androidtvremote.protocol.RemoteMessageFactory
 import dev.local.androidtvremote.protocol.RemoteSession
 import dev.local.androidtvremote.protocol.TlsClient
 import dev.local.androidtvremote.protocol.TrustChangedException
@@ -50,7 +51,10 @@ class AndroidRemoteController(
     context: Context,
     private val scope: CoroutineScope,
     private val voiceCaptureFactory: () -> VoiceAudioCapture = {
-        AudioRecordVoiceCapture(context.applicationContext)
+        AudioRecordVoiceCapture(
+            context.applicationContext,
+            RemoteMessageFactory.MAX_VOICE_PAYLOAD_BYTES,
+        )
     },
 ) : RemoteController {
     private val androidId = Settings.Secure

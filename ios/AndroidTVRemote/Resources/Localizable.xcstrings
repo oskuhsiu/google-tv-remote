@@ -1,43 +1,36 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "6-character code" : { },
-    "Android TV Remote" : { },
-    "Back" : { },
-    "Cancel" : { },
-    "Connect" : { },
-    "Connected" : { },
-    "Connecting…" : { },
-    "Discovery and transport integration are not available in this foundation build." : { },
-    "Disconnected" : { },
-    "Disconnect" : { },
-    "Down" : { },
-    "Enable" : { },
-    "Forget TV" : { },
-    "Full Remote" : { },
-    "Home" : { },
-    "Interrupted" : { },
-    "Keep Ready" : { },
-    "Keep Remote Ready?" : { },
-    "Left" : { },
-    "Looking for TVs…" : { },
-    "Off" : { },
-    "OK" : { },
-    "On" : { },
-    "Pair TV" : { },
-    "Pairing transport integration is not available in this foundation build." : { },
-    "Reconnecting…" : { },
-    "Remembered TV" : { },
-    "Remote" : { },
-    "Retry" : { },
-    "Right" : { },
-    "Security error" : { },
-    "Starting…" : { },
-    "Submit" : { },
-    "This uses silent background audio to keep the TV connection ready. It may use more battery and is experimental." : { },
-    "Transport diagnostic" : { },
-    "Unavailable" : { },
-    "Up" : { }
+    "Android TV Remote" : {
+
+    },
+    "Enter the 6-character code shown on your TV." : {
+
+    },
+    "Make sure the TV and iPhone are on the same local network." : {
+
+    },
+    "Nearby TVs" : {
+
+    },
+    "OK" : {
+
+    },
+    "Open the app to connect" : {
+
+    },
+    "Remembered TV" : {
+
+    },
+    "Send to TV" : {
+
+    },
+    "This uses silent background audio to keep the TV connection ready. It may use more battery and is experimental." : {
+
+    },
+    "Transport diagnostic" : {
+
+    }
   },
   "version" : "1.0"
 }
