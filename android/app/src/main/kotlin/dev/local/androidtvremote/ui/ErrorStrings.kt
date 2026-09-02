@@ -17,6 +17,8 @@ fun RemoteError.messageResource(): Int = when (this) {
     RemoteError.VOICE_PERMISSION_DENIED -> R.string.error_voice_permission_denied
     RemoteError.VOICE_SESSION_FAILED -> R.string.error_voice_session_failed
     RemoteError.TEXT_INPUT_FAILED -> R.string.error_text_input_failed
+    RemoteError.WOL_MAC_REQUIRED -> R.string.error_wol_mac_required
+    RemoteError.WOL_FAILED -> R.string.error_wol_failed
     RemoteError.UNKNOWN -> R.string.error_unknown
 }
 

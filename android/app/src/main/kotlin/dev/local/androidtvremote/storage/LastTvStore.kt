@@ -14,11 +14,13 @@ class LastTvStore(context: Context) {
         val raw = preferences.getString(KEY_RECORD, null) ?: return null
         return runCatching {
             val json = JSONObject(raw)
+            val macAddress = json.optString("macAddress").takeIf(String::isNotBlank)
             LastTvRecord(
                 device = TvDevice(
                     id = json.getString("deviceId"),
                     name = json.getString("deviceName"),
                     source = TvSource.valueOf(json.getString("deviceSource")),
+                    macAddress = macAddress,
                 ),
                 lastHost = json.getString("lastHost"),
                 bonjourLocatorKey = json.optString("bonjourLocatorKey").takeIf(String::isNotBlank),
@@ -26,6 +28,7 @@ class LastTvStore(context: Context) {
                 clientIdentityFingerprint = json.getString("clientIdentityFingerprint"),
                 pairingPeerFingerprint = json.getString("pairingPeerFingerprint"),
                 remotePeerFingerprint = json.getString("remotePeerFingerprint"),
+                macAddress = macAddress,
             )
         }.getOrNull()
     }
@@ -42,6 +45,7 @@ class LastTvStore(context: Context) {
             .put("pairingPeerFingerprint", record.pairingPeerFingerprint)
             .put("remotePeerFingerprint", record.remotePeerFingerprint)
         record.bonjourLocatorKey?.let { json.put("bonjourLocatorKey", it) }
+        record.macAddress?.let { json.put("macAddress", it) }
         check(preferences.edit().putString(KEY_RECORD, json.toString()).commit()) {
             "Unable to persist the remembered TV"
         }

@@ -79,9 +79,11 @@ class RemoteStateTests {
             clientIdentityFingerprint = "client-pin",
             pairingPeerFingerprint = "pairing-pin",
             remotePeerFingerprint = "remote-pin",
+            macAddress = "A4:77:33:12:AB:CD",
         )
 
         assertTrue(TrustTupleValidator.isComplete(record, "client-pin"))
+        assertTrue(TrustTupleValidator.isComplete(record.copy(macAddress = null), "client-pin"))
         assertFalse(TrustTupleValidator.isComplete(record.copy(lastHost = ""), "client-pin"))
         assertFalse(TrustTupleValidator.isComplete(record.copy(pairingPeerFingerprint = ""), "client-pin"))
         assertFalse(TrustTupleValidator.isComplete(record.copy(remotePeerFingerprint = "other"), "client-pin"))

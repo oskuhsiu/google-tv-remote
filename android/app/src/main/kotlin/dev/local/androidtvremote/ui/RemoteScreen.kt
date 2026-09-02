@@ -37,6 +37,7 @@ import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.PowerSettingsNew
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -51,6 +52,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -97,9 +99,13 @@ fun RemoteScreen(
     voiceState: VoiceState,
     onVoiceStart: () -> Unit,
     onVoiceStop: () -> Unit,
+    onSaveMacAddress: ((String?) -> Unit)? = null,
+    onSendWolPacket: ((String, onSent: () -> Unit) -> Unit)? = null,
+    onWake: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     var deviceMenuExpanded by remember { mutableStateOf(false) }
+    var showWolDialog by rememberSaveable { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -154,6 +160,16 @@ fun RemoteScreen(
                                 }
                             },
                         )
+                        if (onSaveMacAddress != null) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.network_wake_settings)) },
+                                leadingIcon = { Icon(Icons.Rounded.Settings, contentDescription = null) },
+                                onClick = {
+                                    deviceMenuExpanded = false
+                                    showWolDialog = true
+                                },
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.disconnect), color = MaterialTheme.colorScheme.error) },
                             onClick = {
@@ -168,10 +184,34 @@ fun RemoteScreen(
                     command = RemoteCommand.POWER,
                     label = stringResource(R.string.power),
                     icon = Icons.Rounded.PowerSettingsNew,
-                    enabled = enabled,
+                    enabled = enabled || onWake != null,
                     modifier = Modifier.size(52.dp).testTag("remote_key_power"),
                     shape = CircleShape,
-                    onCommand = onCommand,
+                    onCommand = { cmd, action ->
+                        if (enabled) {
+                            onCommand(cmd, action)
+                        } else if (onWake != null) {
+                            if (device.macAddress != null) {
+                                onWake()
+                            } else {
+                                showWolDialog = true
+                            }
+                        }
+                    },
+                )
+            }
+
+            if (showWolDialog && onSaveMacAddress != null) {
+                WolSettingsDialog(
+                    initialMac = device.macAddress,
+                    onDismiss = { showWolDialog = false },
+                    onSave = { mac ->
+                        onSaveMacAddress(mac)
+                        showWolDialog = false
+                    },
+                    onSendPacket = { mac, onSent ->
+                        onSendWolPacket?.invoke(mac, onSent)
+                    },
                 )
             }
 

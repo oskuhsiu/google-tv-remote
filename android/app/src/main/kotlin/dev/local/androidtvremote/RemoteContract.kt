@@ -71,6 +71,7 @@ data class TvDevice(
     val id: String,
     val name: String,
     val source: TvSource,
+    val macAddress: String? = null,
 )
 
 data class LastTvRecord(
@@ -81,6 +82,7 @@ data class LastTvRecord(
     val clientIdentityFingerprint: String,
     val pairingPeerFingerprint: String,
     val remotePeerFingerprint: String,
+    val macAddress: String? = null,
 )
 
 enum class RemoteError {
@@ -95,6 +97,8 @@ enum class RemoteError {
     VOICE_PERMISSION_DENIED,
     VOICE_SESSION_FAILED,
     TEXT_INPUT_FAILED,
+    WOL_MAC_REQUIRED,
+    WOL_FAILED,
     UNKNOWN,
 }
 
@@ -153,6 +157,7 @@ interface RemoteController {
     val state: StateFlow<RemoteState>
     val discoveredCandidates: StateFlow<List<TvCandidate>>
     val voiceState: StateFlow<VoiceState>
+    val rememberedMacAddress: StateFlow<String?>
 
     suspend fun initialize()
     suspend fun enterForeground()
@@ -160,6 +165,9 @@ interface RemoteController {
     suspend fun connectRemembered()
     suspend fun submitPairingCode(code: String)
     suspend fun send(command: RemoteCommand, action: RemoteKeyAction = RemoteKeyAction.SHORT)
+    suspend fun wake()
+    suspend fun sendWolPacket(macAddress: String? = null): Boolean
+    suspend fun updateRememberedMacAddress(macAddress: String?)
     suspend fun startVoice()
     suspend fun stopVoice()
     suspend fun disconnect()

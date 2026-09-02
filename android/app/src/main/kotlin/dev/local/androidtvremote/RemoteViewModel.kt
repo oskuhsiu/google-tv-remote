@@ -20,6 +20,7 @@ class RemoteViewModel(application: Application) : AndroidViewModel(application) 
     val discoveredCandidates: StateFlow<List<TvCandidate>> = controller.discoveredCandidates
     val floatingEnabled: StateFlow<Boolean> = runtime.floatingPreferences.enabled
     val voiceState: StateFlow<VoiceState> = controller.voiceState
+    val rememberedMacAddress: StateFlow<String?> = controller.rememberedMacAddress
 
     private val mutableManualHost = MutableStateFlow("")
     val manualHost: StateFlow<String> = mutableManualHost.asStateFlow()
@@ -66,6 +67,19 @@ class RemoteViewModel(application: Application) : AndroidViewModel(application) 
     fun connectRemembered() = launchConnection { controller.connectRemembered() }
 
     fun connect(candidate: TvCandidate) = launchConnection { controller.connect(candidate) }
+
+    fun wake() = launchConnection { controller.wake() }
+
+    fun updateMacAddress(macAddress: String?) {
+        launchAction { controller.updateRememberedMacAddress(macAddress) }
+    }
+
+    fun sendWolPacket(macAddress: String? = null, onSent: (() -> Unit)? = null) {
+        launchAction {
+            controller.sendWolPacket(macAddress)
+            onSent?.invoke()
+        }
+    }
 
     fun submitPairingCode() {
         val code = pairingCode.value

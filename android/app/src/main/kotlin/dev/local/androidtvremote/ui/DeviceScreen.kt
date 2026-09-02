@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -24,6 +25,8 @@ import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.PowerSettingsNew
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -66,6 +69,9 @@ fun DeviceScreen(
     onRememberedConnect: () -> Unit,
     onCandidateConnect: (TvCandidate) -> Unit,
     onForget: () -> Unit,
+    onSaveMacAddress: ((String?) -> Unit)? = null,
+    onSendWolPacket: ((String, onSent: () -> Unit) -> Unit)? = null,
+    onWake: (() -> Unit)? = null,
 ) {
     var manualExpanded by rememberSaveable { mutableStateOf(false) }
 
@@ -96,11 +102,25 @@ fun DeviceScreen(
                     contentColor = MaterialTheme.colorScheme.onErrorContainer,
                     shape = RoundedCornerShape(14.dp),
                 ) {
-                    Text(
-                        text = stringResource(it.messageResource()),
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        Text(
+                            text = stringResource(it.messageResource()),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        if ((it == RemoteError.NETWORK_UNREACHABLE || it == RemoteError.CONNECTION_LOST) &&
+                            rememberedDevice?.macAddress != null && onWake != null
+                        ) {
+                            Spacer(Modifier.height(10.dp))
+                            Button(
+                                onClick = onWake,
+                                modifier = Modifier.fillMaxWidth().testTag("failure_wake_tv_button"),
+                            ) {
+                                Icon(Icons.Rounded.PowerSettingsNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.wake_tv))
+                            }
+                        }
+                    }
                 }
             }
 
@@ -112,6 +132,9 @@ fun DeviceScreen(
                     device = device,
                     onConnect = onRememberedConnect,
                     onForget = onForget,
+                    onSaveMacAddress = onSaveMacAddress,
+                    onSendWolPacket = onSendWolPacket,
+                    onWake = onWake,
                 )
             }
 
@@ -158,8 +181,12 @@ private fun RememberedDeviceCard(
     device: TvDevice,
     onConnect: () -> Unit,
     onForget: () -> Unit,
+    onSaveMacAddress: ((String?) -> Unit)? = null,
+    onSendWolPacket: ((String, onSent: () -> Unit) -> Unit)? = null,
+    onWake: (() -> Unit)? = null,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    var showWolDialog by rememberSaveable { mutableStateOf(false) }
 
     Card(
         onClick = onConnect,
@@ -188,6 +215,20 @@ private fun RememberedDeviceCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
+                    if (device.macAddress != null) {
+                        Spacer(Modifier.size(8.dp))
+                        Text(
+                            "•",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Spacer(Modifier.size(8.dp))
+                        Text(
+                            stringResource(R.string.wol_configured),
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
             }
             Box {
@@ -195,6 +236,26 @@ private fun RememberedDeviceCard(
                     Icon(Icons.Rounded.MoreVert, contentDescription = null)
                 }
                 DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                    if (onWake != null && device.macAddress != null) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.wake_tv)) },
+                            leadingIcon = { Icon(Icons.Rounded.PowerSettingsNew, contentDescription = null) },
+                            onClick = {
+                                menuExpanded = false
+                                onWake()
+                            },
+                        )
+                    }
+                    if (onSaveMacAddress != null) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.network_wake_settings)) },
+                            leadingIcon = { Icon(Icons.Rounded.Settings, contentDescription = null) },
+                            onClick = {
+                                menuExpanded = false
+                                showWolDialog = true
+                            },
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.forget)) },
                         onClick = {
@@ -205,6 +266,20 @@ private fun RememberedDeviceCard(
                 }
             }
         }
+    }
+
+    if (showWolDialog && onSaveMacAddress != null) {
+        WolSettingsDialog(
+            initialMac = device.macAddress,
+            onDismiss = { showWolDialog = false },
+            onSave = { mac ->
+                onSaveMacAddress(mac)
+                showWolDialog = false
+            },
+            onSendPacket = { mac, onSent ->
+                onSendWolPacket?.invoke(mac, onSent)
+            },
+        )
     }
 }
 

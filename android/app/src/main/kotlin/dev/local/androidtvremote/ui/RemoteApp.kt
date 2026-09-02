@@ -85,6 +85,9 @@ fun RemoteApp(
                         voiceState = voiceState,
                         onVoiceStart = onVoiceStart,
                         onVoiceStop = onVoiceStop,
+                        onSaveMacAddress = viewModel::updateMacAddress,
+                        onSendWolPacket = { mac, onSent -> viewModel.sendWolPacket(mac, onSent) },
+                        onWake = viewModel::wake,
                     )
 
                     is RemoteState.Reconnecting -> RemoteScreen(
@@ -98,6 +101,9 @@ fun RemoteApp(
                         voiceState = VoiceState.UNAVAILABLE,
                         onVoiceStart = onVoiceStart,
                         onVoiceStop = onVoiceStop,
+                        onSaveMacAddress = viewModel::updateMacAddress,
+                        onSendWolPacket = { mac, onSent -> viewModel.sendWolPacket(mac, onSent) },
+                        onWake = viewModel::wake,
                     )
 
                     is RemoteState.Discovering -> DeviceScreen(
@@ -111,6 +117,9 @@ fun RemoteApp(
                         onRememberedConnect = viewModel::connectRemembered,
                         onCandidateConnect = viewModel::connect,
                         onForget = viewModel::forget,
+                        onSaveMacAddress = viewModel::updateMacAddress,
+                        onSendWolPacket = { mac, onSent -> viewModel.sendWolPacket(mac, onSent) },
+                        onWake = viewModel::wake,
                     )
 
                     is RemoteState.Disconnected -> DeviceScreen(
@@ -124,6 +133,9 @@ fun RemoteApp(
                         onRememberedConnect = viewModel::connectRemembered,
                         onCandidateConnect = viewModel::connect,
                         onForget = viewModel::forget,
+                        onSaveMacAddress = viewModel::updateMacAddress,
+                        onSendWolPacket = { mac, onSent -> viewModel.sendWolPacket(mac, onSent) },
+                        onWake = viewModel::wake,
                     )
 
                     is RemoteState.Failed -> DeviceScreen(
@@ -137,6 +149,9 @@ fun RemoteApp(
                         onRememberedConnect = viewModel::connectRemembered,
                         onCandidateConnect = viewModel::connect,
                         onForget = viewModel::forget,
+                        onSaveMacAddress = viewModel::updateMacAddress,
+                        onSendWolPacket = { mac, onSent -> viewModel.sendWolPacket(mac, onSent) },
+                        onWake = viewModel::wake,
                     )
 
                     RemoteState.Idle -> DeviceScreen(
@@ -150,6 +165,9 @@ fun RemoteApp(
                         onRememberedConnect = viewModel::connectRemembered,
                         onCandidateConnect = viewModel::connect,
                         onForget = viewModel::forget,
+                        onSaveMacAddress = viewModel::updateMacAddress,
+                        onSendWolPacket = { mac, onSent -> viewModel.sendWolPacket(mac, onSent) },
+                        onWake = viewModel::wake,
                     )
                 }
             }

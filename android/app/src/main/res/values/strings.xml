@@ -65,5 +65,21 @@
     <string name="error_voice_permission_denied">Microphone access is required for voice control.</string>
     <string name="error_voice_session_failed">Voice control failed. The remote is still connected.</string>
     <string name="error_text_input_failed">The TV is not ready for text input.</string>
+    <string name="error_wol_mac_required">A MAC address is required to wake the TV over the network.</string>
+    <string name="error_wol_failed">Failed to send wake packet. Check your network connection.</string>
     <string name="error_unknown">Something went wrong. Retry the connection.</string>
+
+    <string name="network_wake_settings">Network Wake (WOL)</string>
+    <string name="wol_dialog_title">Network Wake (Wake-on-LAN)</string>
+    <string name="wol_dialog_description">Enter your TV\'s Wi-Fi or Ethernet MAC address to wake it over the local network when in standby.</string>
+    <string name="wol_mac_address">MAC address</string>
+    <string name="wol_mac_placeholder">AA:BB:CC:DD:EE:FF</string>
+    <string name="wol_send_packet">Send Wake Packet</string>
+    <string name="wol_packet_sent">Wake packet sent</string>
+    <string name="wol_save">Save</string>
+    <string name="wol_clear">Clear MAC</string>
+    <string name="wol_close">Close</string>
+    <string name="wol_invalid_mac">Enter a valid 12-character MAC address (e.g. AA:BB:CC:DD:EE:FF)</string>
+    <string name="wake_tv">Wake TV</string>
+    <string name="wol_configured">WOL configured</string>
 </resources>
