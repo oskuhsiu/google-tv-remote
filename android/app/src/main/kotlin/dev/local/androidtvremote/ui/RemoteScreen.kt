@@ -1,12 +1,14 @@
 package dev.local.androidtvremote.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -14,7 +16,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -34,11 +35,13 @@ import androidx.compose.material.icons.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.PowerSettingsNew
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -95,13 +98,15 @@ fun RemoteScreen(
     onVoiceStart: () -> Unit,
     onVoiceStop: () -> Unit,
 ) {
-    val floatingRemoteLabel = stringResource(R.string.floating_remote)
+    val scope = rememberCoroutineScope()
+    var deviceMenuExpanded by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(padding)
-            .padding(horizontal = 24.dp, vertical = 16.dp),
+            .padding(horizontal = 20.dp, vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Column(Modifier.widthIn(max = 420.dp).fillMaxWidth()) {
@@ -110,146 +115,146 @@ fun RemoteScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(Modifier.weight(1f)) {
-                    Text(device.name, style = MaterialTheme.typography.headlineSmall)
-                    Text(
-                        if (enabled) stringResource(R.string.connected) else stringResource(R.string.reconnecting),
-                        color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    RemoteIconKey(
-                        command = RemoteCommand.POWER,
-                        label = stringResource(R.string.power),
-                        icon = Icons.Rounded.PowerSettingsNew,
-                        enabled = enabled,
-                        modifier = Modifier.size(48.dp).testTag("remote_key_power"),
-                        shape = CircleShape,
-                        onCommand = onCommand,
-                    )
+                Box(Modifier.weight(1f)) {
                     TextButton(
-                        onClick = onDisconnect,
-                        modifier = Modifier.heightIn(min = 48.dp).testTag("remote_disconnect"),
-                        contentPadding = PaddingValues(horizontal = 12.dp),
-                    ) { Text(stringResource(R.string.disconnect)) }
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = RoundedCornerShape(18.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            floatingRemoteLabel,
-                            style = MaterialTheme.typography.titleMedium,
+                        onClick = { deviceMenuExpanded = true },
+                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp),
+                    ) {
+                        Column(horizontalAlignment = Alignment.Start) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(device.name, style = MaterialTheme.typography.headlineSmall)
+                                Icon(
+                                    Icons.Rounded.KeyboardArrowDown,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                            }
+                            Text(
+                                if (enabled) stringResource(R.string.connected) else stringResource(R.string.reconnecting),
+                                color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                    DropdownMenu(
+                        expanded = deviceMenuExpanded,
+                        onDismissRequest = { deviceMenuExpanded = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.menu)) },
+                            leadingIcon = { Icon(Icons.Rounded.Menu, contentDescription = null) },
+                            enabled = enabled,
+                            onClick = {
+                                deviceMenuExpanded = false
+                                scope.launch {
+                                    try {
+                                        onCommand(RemoteCommand.MENU, RemoteKeyAction.SHORT)
+                                    } catch (_: Throwable) {
+                                    }
+                                }
+                            },
                         )
-                        Text(
-                            stringResource(R.string.floating_remote_description),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodySmall,
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.disconnect), color = MaterialTheme.colorScheme.error) },
+                            onClick = {
+                                deviceMenuExpanded = false
+                                onDisconnect()
+                            },
                         )
                     }
-                    Switch(
-                        checked = floatingEnabled,
-                        onCheckedChange = onFloatingEnabledChange,
-                        enabled = enabled,
-                        modifier = Modifier
-                            .semantics { contentDescription = floatingRemoteLabel }
-                            .testTag("floating_remote_toggle"),
-                    )
                 }
+
+                RemoteIconKey(
+                    command = RemoteCommand.POWER,
+                    label = stringResource(R.string.power),
+                    icon = Icons.Rounded.PowerSettingsNew,
+                    enabled = enabled,
+                    modifier = Modifier.size(52.dp).testTag("remote_key_power"),
+                    shape = CircleShape,
+                    onCommand = onCommand,
+                )
             }
 
-            Spacer(Modifier.height(20.dp))
-            Text(
-                stringResource(R.string.remote_controls),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(18.dp))
             VoiceButton(
                 voiceState = voiceState,
                 enabled = enabled && voiceState != VoiceState.UNAVAILABLE,
                 onStart = onVoiceStart,
                 onStop = onVoiceStop,
-            )
-            Spacer(Modifier.height(16.dp))
-
-            RemoteIconKey(
-                command = RemoteCommand.UP,
-                label = stringResource(R.string.up),
-                icon = Icons.Rounded.KeyboardArrowUp,
-                enabled = enabled,
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .size(68.dp)
-                    .testTag("remote_key_up"),
-                shape = CircleShape,
-                onCommand = onCommand,
-            )
-            Spacer(Modifier.height(8.dp))
-            Row(
                 modifier = Modifier.align(Alignment.CenterHorizontally),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RemoteIconKey(
-                    command = RemoteCommand.LEFT,
-                    label = stringResource(R.string.left),
-                    icon = Icons.Rounded.KeyboardArrowLeft,
-                    enabled = enabled,
-                    modifier = Modifier.size(68.dp).testTag("remote_key_left"),
-                    shape = CircleShape,
-                    onCommand = onCommand,
-                )
-                RemoteOkKey(
-                    label = stringResource(R.string.select),
-                    text = stringResource(R.string.ok),
-                    enabled = enabled,
-                    modifier = Modifier.size(68.dp).testTag("remote_key_select"),
-                    onCommand = onCommand,
-                )
-                RemoteIconKey(
-                    command = RemoteCommand.RIGHT,
-                    label = stringResource(R.string.right),
-                    icon = Icons.Rounded.KeyboardArrowRight,
-                    enabled = enabled,
-                    modifier = Modifier.size(68.dp).testTag("remote_key_right"),
-                    shape = CircleShape,
-                    onCommand = onCommand,
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            RemoteIconKey(
-                command = RemoteCommand.DOWN,
-                label = stringResource(R.string.down),
-                icon = Icons.Rounded.KeyboardArrowDown,
-                enabled = enabled,
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .size(68.dp)
-                    .testTag("remote_key_down"),
-                shape = CircleShape,
-                onCommand = onCommand,
             )
+            Spacer(Modifier.height(18.dp))
 
-            Spacer(Modifier.height(24.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val dPadSize = maxWidth.coerceAtMost(320.dp)
+                val keySize = if (dPadSize < 280.dp) 58.dp else 66.dp
+                Surface(
+                    modifier = Modifier.align(Alignment.Center).size(dPadSize),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)),
+                ) {
+                    Box(Modifier.fillMaxSize()) {
+                        RemoteIconKey(
+                            command = RemoteCommand.UP,
+                            label = stringResource(R.string.up),
+                            icon = Icons.Rounded.KeyboardArrowUp,
+                            enabled = enabled,
+                            modifier = Modifier.align(Alignment.TopCenter).padding(top = 14.dp).size(keySize).testTag("remote_key_up"),
+                            shape = CircleShape,
+                            transparent = true,
+                            onCommand = onCommand,
+                        )
+                        RemoteIconKey(
+                            command = RemoteCommand.DOWN,
+                            label = stringResource(R.string.down),
+                            icon = Icons.Rounded.KeyboardArrowDown,
+                            enabled = enabled,
+                            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 14.dp).size(keySize).testTag("remote_key_down"),
+                            shape = CircleShape,
+                            transparent = true,
+                            onCommand = onCommand,
+                        )
+                        RemoteIconKey(
+                            command = RemoteCommand.LEFT,
+                            label = stringResource(R.string.left),
+                            icon = Icons.Rounded.KeyboardArrowLeft,
+                            enabled = enabled,
+                            modifier = Modifier.align(Alignment.CenterStart).padding(start = 14.dp).size(keySize).testTag("remote_key_left"),
+                            shape = CircleShape,
+                            transparent = true,
+                            onCommand = onCommand,
+                        )
+                        RemoteIconKey(
+                            command = RemoteCommand.RIGHT,
+                            label = stringResource(R.string.right),
+                            icon = Icons.Rounded.KeyboardArrowRight,
+                            enabled = enabled,
+                            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 14.dp).size(keySize).testTag("remote_key_right"),
+                            shape = CircleShape,
+                            transparent = true,
+                            onCommand = onCommand,
+                        )
+                        RemoteOkKey(
+                            label = stringResource(R.string.select),
+                            text = stringResource(R.string.ok),
+                            enabled = enabled,
+                            modifier = Modifier.align(Alignment.Center).size(if (dPadSize < 280.dp) 72.dp else 82.dp).testTag("remote_key_select"),
+                            onCommand = onCommand,
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 RemoteIconKey(
                     command = RemoteCommand.BACK,
                     label = stringResource(R.string.back),
                     icon = Icons.AutoMirrored.Rounded.ArrowBack,
                     enabled = enabled,
-                    modifier = Modifier.weight(1f).height(56.dp).testTag("remote_key_back"),
+                    modifier = Modifier.weight(1f).height(58.dp).testTag("remote_key_back"),
+                    shape = RoundedCornerShape(22.dp),
                     onCommand = onCommand,
                 )
                 RemoteIconKey(
@@ -257,45 +262,61 @@ fun RemoteScreen(
                     label = stringResource(R.string.home),
                     icon = Icons.Rounded.Home,
                     enabled = enabled,
-                    modifier = Modifier.weight(1f).height(56.dp).testTag("remote_key_home"),
+                    modifier = Modifier.weight(1f).height(58.dp).testTag("remote_key_home"),
+                    shape = RoundedCornerShape(22.dp),
                     onCommand = onCommand,
                 )
-                RemoteIconKey(
-                    command = RemoteCommand.MENU,
-                    label = stringResource(R.string.menu),
-                    icon = Icons.Rounded.Menu,
+                ActionIconKey(
+                    label = stringResource(R.string.floating_remote),
+                    icon = Icons.Rounded.PictureInPictureAlt,
                     enabled = enabled,
-                    modifier = Modifier.weight(1f).height(56.dp).testTag("remote_key_menu"),
-                    onCommand = onCommand,
+                    selected = floatingEnabled,
+                    modifier = Modifier.weight(1f).height(58.dp).testTag("floating_remote_toggle"),
+                    onClick = { onFloatingEnabledChange(!floatingEnabled) },
                 )
+            }
+
+            Spacer(Modifier.height(12.dp))
+            Surface(
+                modifier = Modifier.fillMaxWidth().height(58.dp),
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+            ) {
+                Row(Modifier.fillMaxSize()) {
+                    RemoteIconKey(
+                        command = RemoteCommand.VOLUME_DOWN,
+                        label = stringResource(R.string.volume_down),
+                        icon = Icons.AutoMirrored.Rounded.VolumeDown,
+                        enabled = enabled,
+                        modifier = Modifier.weight(1f).fillMaxSize().testTag("remote_key_volume_down"),
+                        shape = RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp),
+                        transparent = true,
+                        onCommand = onCommand,
+                    )
+                    RemoteIconKey(
+                        command = RemoteCommand.MUTE,
+                        label = stringResource(R.string.mute),
+                        icon = Icons.AutoMirrored.Rounded.VolumeOff,
+                        enabled = enabled,
+                        modifier = Modifier.weight(1f).fillMaxSize().testTag("remote_key_mute"),
+                        shape = RoundedCornerShape(0.dp),
+                        transparent = true,
+                        onCommand = onCommand,
+                    )
+                    RemoteIconKey(
+                        command = RemoteCommand.VOLUME_UP,
+                        label = stringResource(R.string.volume_up),
+                        icon = Icons.AutoMirrored.Rounded.VolumeUp,
+                        enabled = enabled,
+                        modifier = Modifier.weight(1f).fillMaxSize().testTag("remote_key_volume_up"),
+                        shape = RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp),
+                        transparent = true,
+                        onCommand = onCommand,
+                    )
+                }
             }
             Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                RemoteIconKey(
-                    command = RemoteCommand.VOLUME_DOWN,
-                    label = stringResource(R.string.volume_down),
-                    icon = Icons.AutoMirrored.Rounded.VolumeDown,
-                    enabled = enabled,
-                    modifier = Modifier.weight(1f).height(56.dp).testTag("remote_key_volume_down"),
-                    onCommand = onCommand,
-                )
-                RemoteIconKey(
-                    command = RemoteCommand.MUTE,
-                    label = stringResource(R.string.mute),
-                    icon = Icons.AutoMirrored.Rounded.VolumeOff,
-                    enabled = enabled,
-                    modifier = Modifier.weight(1f).height(56.dp).testTag("remote_key_mute"),
-                    onCommand = onCommand,
-                )
-                RemoteIconKey(
-                    command = RemoteCommand.VOLUME_UP,
-                    label = stringResource(R.string.volume_up),
-                    icon = Icons.AutoMirrored.Rounded.VolumeUp,
-                    enabled = enabled,
-                    modifier = Modifier.weight(1f).height(56.dp).testTag("remote_key_volume_up"),
-                    onCommand = onCommand,
-                )
-            }
         }
     }
 }
@@ -306,6 +327,7 @@ private fun VoiceButton(
     enabled: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val haptics = LocalHapticFeedback.current
     val currentOnStart by rememberUpdatedState(onStart)
@@ -323,18 +345,15 @@ private fun VoiceButton(
     }
 
     Surface(
-        color = if (voiceState == VoiceState.LISTENING) {
-            MaterialTheme.colorScheme.primaryContainer
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant
-        },
-        shape = RoundedCornerShape(18.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(64.dp)
-            .alpha(if (enabled) 1f else 0.55f)
+        color = if (voiceState == VoiceState.LISTENING) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = if (voiceState == VoiceState.LISTENING) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary,
+        shape = CircleShape,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = if (voiceState == VoiceState.LISTENING) 0.9f else 0.55f)),
+        modifier = modifier
+            .size(76.dp)
+            .alpha(if (enabled) 1f else 0.45f)
             .semantics(mergeDescendants = true) {
-                contentDescription = label
+                contentDescription = "$label, $status"
                 role = Role.Button
                 if (!enabled) {
                     disabled()
@@ -361,13 +380,33 @@ private fun VoiceButton(
             }
             .testTag("remote_voice_hold"),
     ) {
-        Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Rounded.Mic, contentDescription = null, modifier = Modifier.size(28.dp))
-            Text(status, style = MaterialTheme.typography.titleMedium)
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Icon(Icons.Rounded.Mic, contentDescription = null, modifier = Modifier.size(34.dp))
+        }
+    }
+}
+
+@Composable
+private fun ActionIconKey(
+    label: String,
+    icon: ImageVector,
+    enabled: Boolean,
+    selected: Boolean,
+    modifier: Modifier,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = modifier
+            .alpha(if (enabled) 1f else 0.45f)
+            .clickable(enabled = enabled, onClick = onClick)
+            .semantics { contentDescription = label },
+        shape = RoundedCornerShape(22.dp),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(28.dp))
         }
     }
 }
@@ -380,6 +419,7 @@ private fun RemoteIconKey(
     enabled: Boolean,
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(18.dp),
+    transparent: Boolean = false,
     onCommand: suspend (RemoteCommand, RemoteKeyAction) -> Unit,
 ) {
     RemoteKeySurface(
@@ -388,13 +428,10 @@ private fun RemoteIconKey(
         enabled = enabled,
         modifier = modifier,
         shape = shape,
+        transparent = transparent,
         onCommand = onCommand,
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.size(28.dp),
-        )
+        Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(28.dp))
     }
 }
 
@@ -427,6 +464,7 @@ private fun RemoteKeySurface(
     modifier: Modifier,
     shape: Shape,
     emphasized: Boolean = false,
+    transparent: Boolean = false,
     onCommand: suspend (RemoteCommand, RemoteKeyAction) -> Unit,
     content: @Composable () -> Unit,
 ) {
@@ -435,16 +473,10 @@ private fun RemoteKeySurface(
     val currentOnCommand by rememberUpdatedState(onCommand)
     var pressed by remember { mutableStateOf(false) }
     val pressHandler = remember {
-        RemotePressHandler { pressedCommand, action ->
-            currentOnCommand(pressedCommand, action)
-        }
+        RemotePressHandler { pressedCommand, action -> currentOnCommand(pressedCommand, action) }
     }
-    val initialHaptic = {
-        haptics.performHapticFeedback(HapticFeedbackType.VirtualKey)
-    }
-    val longHaptic = {
-        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-    }
+    val initialHaptic = { haptics.performHapticFeedback(HapticFeedbackType.VirtualKey) }
+    val longHaptic = { haptics.performHapticFeedback(HapticFeedbackType.LongPress) }
     val launchCommand: (suspend () -> Unit) -> Unit = { block ->
         coroutineScope.launch {
             try {
@@ -452,7 +484,6 @@ private fun RemoteKeySurface(
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Throwable) {
-                // The ViewModel has already exposed the command error.
             }
         }
     }
@@ -464,9 +495,7 @@ private fun RemoteKeySurface(
         } else {
             onClick(label = label) {
                 initialHaptic()
-                launchCommand {
-                    currentOnCommand(command, RemoteKeyAction.SHORT)
-                }
+                launchCommand { currentOnCommand(command, RemoteKeyAction.SHORT) }
                 true
             }
             if (command == RemoteCommand.SELECT) {
@@ -480,9 +509,7 @@ private fun RemoteKeySurface(
                             longStarted = true
                         } finally {
                             if (longStarted) {
-                                withContext(NonCancellable) {
-                                    currentOnCommand(command, RemoteKeyAction.END_LONG)
-                                }
+                                withContext(NonCancellable) { currentOnCommand(command, RemoteKeyAction.END_LONG) }
                             }
                         }
                     }
@@ -506,15 +533,10 @@ private fun RemoteKeySurface(
                         initialHaptic()
                         pressJob = gestureScope.launch {
                             try {
-                                pressHandler.press(
-                                    command = command,
-                                    awaitRelease = { released.await() },
-                                    onLongPress = longHaptic,
-                                )
+                                pressHandler.press(command = command, awaitRelease = { released.await() }, onLongPress = longHaptic)
                             } catch (error: CancellationException) {
                                 throw error
                             } catch (_: Throwable) {
-                                // The ViewModel has already exposed the command error.
                             }
                         }
                         val up = waitForUpOrCancellation()
@@ -530,15 +552,16 @@ private fun RemoteKeySurface(
         }
     }
     val containerColor = when {
+        transparent && pressed -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.75f)
+        transparent -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0f)
         emphasized && pressed -> MaterialTheme.colorScheme.primaryContainer
-        emphasized -> MaterialTheme.colorScheme.primary
-        pressed -> MaterialTheme.colorScheme.secondaryContainer
+        emphasized -> MaterialTheme.colorScheme.surface
+        pressed -> MaterialTheme.colorScheme.primaryContainer
         else -> MaterialTheme.colorScheme.surfaceVariant
     }
     val contentColor = when {
-        emphasized && pressed -> MaterialTheme.colorScheme.onPrimaryContainer
-        emphasized -> MaterialTheme.colorScheme.onPrimary
-        pressed -> MaterialTheme.colorScheme.onSecondaryContainer
+        emphasized -> MaterialTheme.colorScheme.onSurface
+        pressed -> MaterialTheme.colorScheme.onPrimaryContainer
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
@@ -551,10 +574,8 @@ private fun RemoteKeySurface(
         shape = shape,
         color = containerColor,
         contentColor = contentColor,
-        border = if (emphasized) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        border = if (transparent) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            content()
-        }
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
     }
 }
