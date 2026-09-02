@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">TV Remote</string>
-    <string name="device_intro">Connect your phone and TV to the same Wi-Fi network.</string>
+    <string name="connect_to_tv">Connect to a TV</string>
+    <string name="device_intro">Select a TV on the same Wi-Fi network.</string>
     <string name="nearby_tvs">Nearby TVs</string>
-    <string name="looking_for_tvs">Looking for TVs…</string>
-    <string name="discovery_hint">Listening for Android TV Remote broadcasts on this network</string>
-    <string name="last_tv">Last TV</string>
-    <string name="ready_to_reconnect">Ready to reconnect without pairing again</string>
-    <string name="manual_ip">Manual IP</string>
+    <string name="looking_for_tvs">Looking for TVs nearby…</string>
+    <string name="discovery_hint">Make sure your TV is turned on and connected to the same Wi-Fi.</string>
+    <string name="last_tv">Last used</string>
+    <string name="ready_to_reconnect">Ready to connect</string>
+    <string name="manual_ip">Connect manually</string>
     <string name="tv_ip_address">TV IP address</string>
-    <string name="manual_ip_hint">Use the address shown in your TV network settings.</string>
+    <string name="manual_ip_hint">Enter the IP address shown in your TV network settings.</string>
     <string name="connect">Connect</string>
     <string name="forget">Forget</string>
     <string name="connecting_to">Connecting to %1$s…</string>
