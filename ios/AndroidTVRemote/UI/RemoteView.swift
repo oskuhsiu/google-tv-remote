@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct RemoteView: View {
     @ObservedObject var model: AppModel
