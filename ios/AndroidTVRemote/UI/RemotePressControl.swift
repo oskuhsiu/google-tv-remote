@@ -117,7 +117,7 @@ struct RemoteDPad: View {
             Circle()
                 .fill(Color(uiColor: .secondarySystemBackground))
             Circle()
-                .strokeBorder(.primary.opacity(0.08), lineWidth: 1)
+                .strokeBorder(Color.accentColor.opacity(0.45), lineWidth: 1.2)
 
             direction(.up, label: "Up", symbol: "chevron.up", x: 0, y: -88)
             direction(.down, label: "Down", symbol: "chevron.down", x: 0, y: 88)
@@ -132,9 +132,11 @@ struct RemoteDPad: View {
             ) {
                 Text("OK")
                     .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(width: 76, height: 76)
-                    .background(Color.accentColor, in: Circle())
+                    .foregroundStyle(.primary)
+                    .frame(width: 82, height: 82)
+                    .background(Color(uiColor: .tertiarySystemBackground), in: Circle())
+                    .overlay(Circle().stroke(.white.opacity(0.12), lineWidth: 1))
+                    .shadow(color: .black.opacity(0.32), radius: 8, y: 4)
             }
         }
         .frame(width: 280, height: 280)
@@ -156,8 +158,8 @@ struct RemoteDPad: View {
         ) {
             Image(systemName: symbol)
                 .font(.title2.weight(.semibold))
-                .foregroundStyle(.primary)
-                .frame(width: 76, height: 76)
+                .foregroundStyle(Color.accentColor.opacity(0.95))
+                .frame(width: 72, height: 72)
         }
         .offset(x: x, y: y)
     }
