@@ -1,0 +1,86 @@
+name: Release 0.1.4 once
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/release-0.1.4-once.yml"
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    name: Build and publish 0.1.4
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: v0.1.4
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+          cache-dependency-path: android/**/*.gradle*
+
+      - name: Validate version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version_name="$(sed -nE 's/^[[:space:]]*versionName = "([^"]+)"/\1/p' android/app/build.gradle.kts)"
+          test "$version_name" = "0.1.4"
+
+      - name: Test and build signed APK
+        working-directory: android
+        run: ./gradlew test assembleRelease --no-daemon
+
+      - name: Verify signer and prepare assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="android/app/build/outputs/apk/release/app-release.apk"
+          apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "$apksigner"
+          verification="$($apksigner verify --verbose --print-certs "$apk")"
+          printf '%s\n' "$verification"
+          actual="$(printf '%s\n' "$verification" | sed -n 's/^.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
+          expected="$(tr -d ':[:space:]' < android/signing/public-release.sha256 | tr '[:lower:]' '[:upper:]')"
+          test -n "$actual"
+          test "$actual" = "$expected"
+          mkdir -p release-assets
+          cp "$apk" release-assets/google-tv-remote-v0.1.4.apk
+          cp LICENSE THIRD_PARTY_NOTICES THIRD_PARTY_LICENSES release-assets/
+          (cd release-assets && sha256sum google-tv-remote-v0.1.4.apk > google-tv-remote-v0.1.4.apk.sha256)
+
+      - name: Publish GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create v0.1.4 release-assets/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --generate-notes \
+            --title "Google TV Remote v0.1.4"
+
+      - name: Remove one-time workflow
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api -X DELETE \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/contents/.github/workflows/release-0.1.4-once.yml" \
+            -f message='Remove one-time 0.1.4 release workflow' \
+            -f sha="$(gh api "/repos/$GITHUB_REPOSITORY/contents/.github/workflows/release-0.1.4-once.yml?ref=main" --jq .sha)" \
+            -f branch=main
