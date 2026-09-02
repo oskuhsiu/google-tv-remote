@@ -21,6 +21,7 @@ struct RootView: View {
                 .padding(.horizontal, 20)
             }
         }
+        .preferredColorScheme(.dark)
     }
 
     @ViewBuilder
@@ -47,9 +48,19 @@ struct RootView: View {
         case .needsPairing(let device), .pairing(let device):
             PairingView(model: model, device: device)
         case .connected(let device):
-            RemoteView(model: model, device: device, isConnected: true)
+            RemoteView(
+                model: model,
+                device: device,
+                isConnected: true,
+                openCompactRemote: { route = .compactRemote }
+            )
         case .reconnecting(let device, _):
-            RemoteView(model: model, device: device, isConnected: false)
+            RemoteView(
+                model: model,
+                device: device,
+                isConnected: false,
+                openCompactRemote: { route = .compactRemote }
+            )
         default:
             DeviceView(model: model)
         }
