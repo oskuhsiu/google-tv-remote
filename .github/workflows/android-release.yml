@@ -2,6 +2,8 @@ name: Android release
 
 on:
   push:
+    branches:
+      - "beta/**"
     tags:
       - "v*"
 
@@ -18,7 +20,7 @@ jobs:
     permissions:
       contents: read
     env:
-      RELEASE_TAG: ${{ github.ref_name }}
+      RELEASE_REF: ${{ github.ref_name }}
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -33,19 +35,27 @@ jobs:
           cache: gradle
           cache-dependency-path: android/**/*.gradle*
 
-      - name: Validate release tag
+      - name: Validate version
         shell: bash
         run: |
           set -euo pipefail
-          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Release tags must look like v1.2.3" >&2
-            exit 1
-          fi
           version_name="$(sed -nE 's/^[[:space:]]*versionName = "([^"]+)"/\1/p' android/app/build.gradle.kts)"
-          if [[ "$RELEASE_TAG" != "v$version_name" ]]; then
-            echo "Tag $RELEASE_TAG does not match Android version $version_name" >&2
-            exit 1
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            if [[ ! "$RELEASE_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Release tags must look like v1.2.3" >&2
+              exit 1
+            fi
+            if [[ "$RELEASE_REF" != "v$version_name" ]]; then
+              echo "Tag $RELEASE_REF does not match Android version $version_name" >&2
+              exit 1
+            fi
+          else
+            if [[ ! "$version_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+-beta(\.[0-9]+)?$ ]]; then
+              echo "Beta branches must use a version like 1.2.3-beta.1" >&2
+              exit 1
+            fi
           fi
+          echo "VERSION_NAME=$version_name" >> "$GITHUB_ENV"
 
       - name: Test and build signed APK
         working-directory: android
@@ -69,7 +79,7 @@ jobs:
           fi
 
           release_dir="$RUNNER_TEMP/release-assets"
-          apk_name="google-tv-remote-$RELEASE_TAG.apk"
+          apk_name="google-tv-remote-v$VERSION_NAME.apk"
           mkdir -p "$release_dir"
           cp "$apk" "$release_dir/$apk_name"
           cp LICENSE THIRD_PARTY_NOTICES THIRD_PARTY_LICENSES "$release_dir/"
@@ -78,13 +88,14 @@ jobs:
       - name: Store verified release assets
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: android-release-assets
+          name: android-release-assets-${{ github.run_number }}
           path: ${{ runner.temp }}/release-assets/
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
 
   publish:
     name: Publish GitHub release
+    if: startsWith(github.ref, 'refs/tags/')
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -97,7 +108,7 @@ jobs:
       - name: Download verified assets
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: android-release-assets
+          name: android-release-assets-${{ github.run_number }}
           path: release-assets
 
       - name: Create GitHub release
