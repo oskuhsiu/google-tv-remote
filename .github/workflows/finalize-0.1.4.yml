@@ -1,0 +1,42 @@
+name: Finalize 0.1.4
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/finalize-0.1.4.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    name: Tag and clean branches
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Create release tag and remove temporary branches
+        shell: bash
+        env:
+          RELEASE_SHA: b5a9abc44c78eb14fe134abbfe5562d0afe55c4a
+          RELEASE_TAG: v0.1.4
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git rev-parse "$RELEASE_TAG" >/dev/null 2>&1; then
+            existing="$(git rev-list -n 1 "$RELEASE_TAG")"
+            test "$existing" = "$RELEASE_SHA"
+          else
+            git tag "$RELEASE_TAG" "$RELEASE_SHA"
+            git push origin "refs/tags/$RELEASE_TAG"
+          fi
+
+          git push origin --delete ui/remote-redesign || true
+          git push origin --delete beta/pr1-ui-0.1.4-beta.1 || true
