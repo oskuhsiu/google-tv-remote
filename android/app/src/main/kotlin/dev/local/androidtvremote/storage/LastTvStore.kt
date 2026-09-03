@@ -5,6 +5,7 @@ import android.content.Context
 import dev.local.androidtvremote.LastTvRecord
 import dev.local.androidtvremote.TvDevice
 import dev.local.androidtvremote.TvSource
+import dev.local.androidtvremote.wol.WolPacket
 import org.json.JSONObject
 
 class LastTvStore(context: Context) {
@@ -14,7 +15,10 @@ class LastTvStore(context: Context) {
         val raw = preferences.getString(KEY_RECORD, null) ?: return null
         return runCatching {
             val json = JSONObject(raw)
-            val macAddress = json.optString("macAddress").takeIf(String::isNotBlank)
+            val rawMac = json.optString("macAddress")
+            val macAddress = rawMac.takeIf { it.isNotBlank() && it != "null" }
+                ?.let { if (WolPacket.isValidMac(it)) WolPacket.formatMac(it) else null }
+            val bonjourLocatorKey = json.optString("bonjourLocatorKey").takeIf { it.isNotBlank() && it != "null" }
             LastTvRecord(
                 device = TvDevice(
                     id = json.getString("deviceId"),
@@ -23,7 +27,7 @@ class LastTvStore(context: Context) {
                     macAddress = macAddress,
                 ),
                 lastHost = json.getString("lastHost"),
-                bonjourLocatorKey = json.optString("bonjourLocatorKey").takeIf(String::isNotBlank),
+                bonjourLocatorKey = bonjourLocatorKey,
                 lastConnectedAt = json.getLong("lastConnectedAt"),
                 clientIdentityFingerprint = json.getString("clientIdentityFingerprint"),
                 pairingPeerFingerprint = json.getString("pairingPeerFingerprint"),

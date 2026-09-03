@@ -4,6 +4,7 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.NetworkInterface
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -44,7 +45,7 @@ class DefaultWolSender(
         }
 
         var anySent = false
-        runCatching {
+        try {
             DatagramSocket().use { socket ->
                 socket.broadcast = true
                 for (attempt in 0 until repeatCount.coerceAtLeast(1)) {
@@ -60,6 +61,10 @@ class DefaultWolSender(
                     }
                 }
             }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Throwable) {
+            // Socket initialization / configuration error
         }
         anySent
     }

@@ -27,6 +27,7 @@ class WolTests {
         assertFalse(WolPacket.isValidMac(null))
         assertFalse(WolPacket.isValidMac(""))
         assertFalse(WolPacket.isValidMac("   "))
+        assertFalse(WolPacket.isValidMac("null"))
         assertFalse(WolPacket.isValidMac("A4:77:33:12:AB"))
         assertFalse(WolPacket.isValidMac("A4:77:33:12:AB:CD:EF"))
         assertFalse(WolPacket.isValidMac("A4:77:33:12:AB:CG"))
@@ -194,5 +195,23 @@ class WolTests {
             remotePeerFingerprint = "test-id",
         )
         assertEquals(null, record.macAddress)
+    }
+
+    @Test
+    fun `wol sender propagates cancellation exception`() = runBlocking {
+        val sender = DefaultWolSender(
+            broadcastProvider = { listOf(InetAddress.getByName("127.0.0.1")) },
+        )
+        val job = kotlinx.coroutines.launch {
+            sender.send(
+                macAddress = "A4:77:33:12:AB:CD",
+                repeatCount = 10,
+                repeatDelayMillis = 1000L,
+            )
+        }
+        kotlinx.coroutines.delay(20)
+        job.cancel()
+        job.join()
+        assertTrue(job.isCancelled)
     }
 }

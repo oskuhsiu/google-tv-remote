@@ -78,8 +78,8 @@
     <string name="wol_packet_sent">Wake packet sent</string>
     <string name="wol_save">Save</string>
     <string name="wol_clear">Clear MAC</string>
-    <string name="wol_close">Close</string>
-    <string name="wol_invalid_mac">Enter a valid 12-character MAC address (e.g. AA:BB:CC:DD:EE:FF)</string>
+    <string name="wol_invalid_mac">Enter a valid MAC address (e.g. AA:BB:CC:DD:EE:FF)</string>
     <string name="wake_tv">Wake TV</string>
     <string name="wol_configured">WOL configured</string>
+    <string name="clear_input">Clear input</string>
 </resources>

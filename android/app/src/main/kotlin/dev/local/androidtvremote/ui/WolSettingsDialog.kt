@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Clear
@@ -32,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -45,9 +47,22 @@ fun WolSettingsDialog(
     onSave: (String?) -> Unit,
     onSendPacket: (String, onSent: () -> Unit) -> Unit,
 ) {
-    var macInput by rememberSaveable { mutableStateOf(initialMac ?: "") }
-    var inputError by rememberSaveable { mutableStateOf<String?>(null) }
+    var macInput by rememberSaveable(initialMac) { mutableStateOf(initialMac ?: "") }
+    var inputError by rememberSaveable(initialMac) { mutableStateOf<String?>(null) }
     val context = LocalContext.current
+
+    val onConfirmSave = {
+        val trimmed = macInput.trim()
+        if (trimmed.isEmpty()) {
+            onSave(null)
+            onDismiss()
+        } else if (WolPacket.isValidMac(trimmed)) {
+            onSave(WolPacket.formatMac(trimmed))
+            onDismiss()
+        } else {
+            inputError = context.getString(R.string.wol_invalid_mac)
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -80,6 +95,10 @@ fun WolSettingsDialog(
                         capitalization = KeyboardCapitalization.Characters,
                         autoCorrectEnabled = false,
                         keyboardType = KeyboardType.Ascii,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = { onConfirmSave() },
                     ),
                     trailingIcon = {
                         if (macInput.isNotEmpty()) {
@@ -87,7 +106,10 @@ fun WolSettingsDialog(
                                 macInput = ""
                                 inputError = null
                             }) {
-                                Icon(Icons.Rounded.Clear, contentDescription = null)
+                                Icon(
+                                    Icons.Rounded.Clear,
+                                    contentDescription = stringResource(R.string.clear_input),
+                                )
                             }
                         }
                     },
@@ -120,18 +142,7 @@ fun WolSettingsDialog(
         },
         confirmButton = {
             Button(
-                onClick = {
-                    val trimmed = macInput.trim()
-                    if (trimmed.isEmpty()) {
-                        onSave(null)
-                        onDismiss()
-                    } else if (WolPacket.isValidMac(trimmed)) {
-                        onSave(WolPacket.formatMac(trimmed))
-                        onDismiss()
-                    } else {
-                        inputError = context.getString(R.string.wol_invalid_mac)
-                    }
-                },
+                onClick = onConfirmSave,
                 modifier = Modifier.testTag("wol_save_btn"),
             ) {
                 Text(stringResource(R.string.wol_save))

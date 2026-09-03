@@ -270,33 +270,124 @@ class AndroidRemoteController(
             Triple(m, rec.lastHost, rec)
         }
 
-        val sent = wolSender.send(mac, host)
+        val sent = try {
+            wolSender.send(mac, host)
+        } catch (error: CancellationException) {
+            lifecycleMutex.withLock {
+                if (mutableState.value is RemoteState.Connecting) {
+                    mutableState.value = RemoteState.Disconnected(record.device)
+                }
+            }
+            throw error
+        } catch (error: Throwable) {
+            lifecycleMutex.withLock {
+                if (mutableState.value is RemoteState.Connecting) {
+                    mutableState.value = RemoteState.Failed(record.device, RemoteError.WOL_FAILED, recoverable = true)
+                }
+            }
+            throw RemoteOperationException(RemoteError.WOL_FAILED, error)
+        }
+
         if (!sent) {
+            lifecycleMutex.withLock {
+                if (mutableState.value is RemoteState.Connecting) {
+                    mutableState.value = RemoteState.Failed(record.device, RemoteError.WOL_FAILED, recoverable = true)
+                }
+            }
             throw RemoteOperationException(RemoteError.WOL_FAILED)
         }
 
-        delay(WOL_WAKE_DELAY_MILLIS)
+        try {
+            delay(WOL_WAKE_DELAY_MILLIS)
+        } catch (error: CancellationException) {
+            lifecycleMutex.withLock {
+                if (mutableState.value is RemoteState.Connecting) {
+                    mutableState.value = RemoteState.Disconnected(record.device)
+                }
+            }
+            throw error
+        }
+
+        val candidate = record.asCandidate()
+        var lastError: Throwable? = null
+        for (attempt in 1..3) {
+            val connected = lifecycleMutex.withLock {
+                val current = rememberedRecord ?: return
+                if (current.device.id != record.device.id) return
+                if (mutableState.value is RemoteState.Connected) return
+                closeTransportsLocked()
+                mutableState.value = RemoteState.Connecting(candidate)
+                try {
+                    val opened = openRemoteLocked(candidate.host, current.remotePeerFingerprint)
+                    val updated = current.copy(
+                        lastHost = candidate.host,
+                        bonjourLocatorKey = candidate.locatorKey.takeIf { candidate.source == TvSource.DISCOVERY }
+                            ?: current.bonjourLocatorKey,
+                        lastConnectedAt = System.currentTimeMillis(),
+                    )
+                    lastTvStore.save(updated)
+                    rememberedRecord = updated
+                    mutableRememberedMacAddress.value = updated.macAddress
+                    remoteSession = opened
+                    mutableState.value = RemoteState.Connected(updated.device)
+                    mutableVoiceState.value = voiceStateFor(opened)
+                    true
+                } catch (error: CancellationException) {
+                    activeSessionToken = null
+                    throw error
+                } catch (error: ClientIdentityRejectedException) {
+                    beginPairingLocked(candidate, previousRecord = current)
+                    return
+                } catch (error: TrustChangedException) {
+                    mutableState.value = RemoteState.Failed(current.device, RemoteError.TRUST_CHANGED, recoverable = false)
+                    startDiscoveryIfUnpairedLocked()
+                    return
+                } catch (error: Throwable) {
+                    activeSessionToken = null
+                    lastError = error
+                    false
+                }
+            }
+            if (connected) return
+            if (attempt < 3) {
+                try {
+                    delay(RetryPolicy.delayMillis(attempt) ?: 1000L)
+                } catch (error: CancellationException) {
+                    lifecycleMutex.withLock {
+                        if (mutableState.value is RemoteState.Connecting) {
+                            mutableState.value = RemoteState.Disconnected(record.device)
+                        }
+                    }
+                    throw error
+                }
+            }
+        }
+
         lifecycleMutex.withLock {
             val current = rememberedRecord ?: return
             if (current.device.id != record.device.id) return
-            closeTransportsLocked()
-            connectKnownLocked(current.asCandidate(), current, withRetry = true)
+            if (mutableState.value is RemoteState.Connected) return
+            val err = lastError ?: return
+            mutableState.value = RemoteState.Failed(current.device, mapConnectionFailure(err), recoverable = true)
+            startDiscoveryIfUnpairedLocked()
         }
     }
 
-    override suspend fun sendWolPacket(macAddress: String?): Boolean = withContext(NonCancellable) {
-        val mac = macAddress?.trim()?.takeIf(String::isNotBlank)
-            ?: lifecycleMutex.withLock { rememberedRecord?.macAddress }
-            ?: throw RemoteOperationException(RemoteError.WOL_MAC_REQUIRED)
-        if (!WolPacket.isValidMac(mac)) {
-            throw RemoteOperationException(RemoteError.WOL_MAC_REQUIRED)
+    override suspend fun sendWolPacket(macAddress: String?): Boolean {
+        val (mac, targetHost) = lifecycleMutex.withLock {
+            val m = macAddress?.trim()?.takeIf(String::isNotBlank)
+                ?: rememberedRecord?.macAddress
+                ?: throw RemoteOperationException(RemoteError.WOL_MAC_REQUIRED)
+            if (!WolPacket.isValidMac(m)) {
+                throw RemoteOperationException(RemoteError.WOL_MAC_REQUIRED)
+            }
+            Pair(m, rememberedRecord?.lastHost)
         }
-        val targetHost = lifecycleMutex.withLock { rememberedRecord?.lastHost }
         val sent = wolSender.send(mac, targetHost)
         if (!sent) {
             throw RemoteOperationException(RemoteError.WOL_FAILED)
         }
-        true
+        return true
     }
 
     override suspend fun updateRememberedMacAddress(macAddress: String?) = lifecycleMutex.withLock {
@@ -443,18 +534,10 @@ class AndroidRemoteController(
         }
     }
 
-    private suspend fun connectKnownLocked(
-        candidate: TvCandidate,
-        record: LastTvRecord,
-        withRetry: Boolean = false,
-    ) {
+    private suspend fun connectKnownLocked(candidate: TvCandidate, record: LastTvRecord) {
         mutableState.value = RemoteState.Connecting(candidate)
         try {
-            val opened = if (withRetry) {
-                openRemoteWithRetryLocked(candidate.host, record.remotePeerFingerprint)
-            } else {
-                openRemoteLocked(candidate.host, record.remotePeerFingerprint)
-            }
+            val opened = openRemoteLocked(candidate.host, record.remotePeerFingerprint)
             val updated = record.copy(
                 lastHost = candidate.host,
                 bonjourLocatorKey = candidate.locatorKey.takeIf { candidate.source == TvSource.DISCOVERY }
