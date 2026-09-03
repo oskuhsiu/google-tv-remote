@@ -19,6 +19,13 @@ interface WolPacketSender {
     ): Boolean
 }
 
+data class NetworkInterfaceDetails(
+    val name: String,
+    val isLoopback: Boolean = false,
+    val isUp: Boolean = true,
+    val isVirtual: Boolean = false,
+)
+
 class DefaultWolSender(
     private val broadcastProvider: () -> List<InetAddress> = ::discoverBroadcastAddresses,
 ) : WolPacketSender {
@@ -33,15 +40,9 @@ class DefaultWolSender(
         val macBytes = runCatching { WolPacket.parseMac(macAddress) }.getOrNull() ?: return@withContext false
         val packetData = WolPacket.buildMagicPacket(macBytes)
 
-        val destinations = mutableSetOf<InetAddress>()
-        destinations.addAll(broadcastProvider())
-        runCatching { destinations.add(InetAddress.getByName("255.255.255.255")) }
-
-        if (!targetHost.isNullOrBlank()) {
-            runCatching {
-                val targetAddr = InetAddress.getByName(targetHost)
-                destinations.add(targetAddr)
-            }
+        val destinations = broadcastProvider()
+        if (destinations.isEmpty()) {
+            return@withContext false
         }
 
         var anySent = false
@@ -70,12 +71,34 @@ class DefaultWolSender(
     }
 
     companion object {
+        private val EXCLUDED_INTERFACE_PREFIXES = listOf(
+            "tun", "tap", "ppp", "p2p", "dummy", "rmnet", "ccmni", "sit", "ip6tnl"
+        )
+
+        fun isEligibleInterface(details: NetworkInterfaceDetails): Boolean {
+            if (details.isLoopback || !details.isUp || details.isVirtual) {
+                return false
+            }
+            val lower = details.name.lowercase()
+            return EXCLUDED_INTERFACE_PREFIXES.none { lower.startsWith(it) }
+        }
+
+        fun isEligibleInterface(networkInterface: NetworkInterface): Boolean =
+            isEligibleInterface(
+                NetworkInterfaceDetails(
+                    name = networkInterface.name,
+                    isLoopback = networkInterface.isLoopback,
+                    isUp = networkInterface.isUp,
+                    isVirtual = networkInterface.isVirtual,
+                )
+            )
+
         fun discoverBroadcastAddresses(): List<InetAddress> {
             val broadcasts = mutableListOf<InetAddress>()
             val interfaces = runCatching { NetworkInterface.getNetworkInterfaces() }.getOrNull() ?: return broadcasts
             for (networkInterface in interfaces.asSequence()) {
                 runCatching {
-                    if (networkInterface.isLoopback || !networkInterface.isUp) return@runCatching
+                    if (!isEligibleInterface(networkInterface)) return@runCatching
                     for (interfaceAddress in networkInterface.interfaceAddresses) {
                         val broadcast = interfaceAddress.broadcast
                         if (broadcast != null) {

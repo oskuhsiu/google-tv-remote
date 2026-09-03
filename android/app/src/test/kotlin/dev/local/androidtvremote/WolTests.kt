@@ -3,6 +3,8 @@ package dev.local.androidtvremote
 import dev.local.androidtvremote.wol.DefaultWolSender
 import dev.local.androidtvremote.wol.WolPacket
 import java.net.InetAddress
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -202,7 +204,7 @@ class WolTests {
         val sender = DefaultWolSender(
             broadcastProvider = { listOf(InetAddress.getByName("127.0.0.1")) },
         )
-        val job = kotlinx.coroutines.launch {
+        val job = launch {
             sender.send(
                 macAddress = "A4:77:33:12:AB:CD",
                 repeatCount = 10,
@@ -213,5 +215,52 @@ class WolTests {
         job.cancel()
         job.join()
         assertTrue(job.isCancelled)
+    }
+
+    @Test
+    fun `wol sender returns false when no local broadcast destinations exist`() = runBlocking {
+        val sender = DefaultWolSender(
+            broadcastProvider = { emptyList() },
+        )
+        val result = sender.send(
+            macAddress = "A4:77:33:12:AB:CD",
+            targetHost = null,
+        )
+        assertFalse(result)
+    }
+
+    @Test
+    fun `wol sender does not unicast over cellular or fallback when local broadcasts empty`() = runBlocking {
+        val sender = DefaultWolSender(
+            broadcastProvider = { emptyList() },
+        )
+        val result = sender.send(
+            macAddress = "A4:77:33:12:AB:CD",
+            targetHost = "192.168.1.50",
+        )
+        assertFalse(result)
+    }
+
+    @Test
+    fun `eligible interface filters loopback down virtual and excluded prefixes`() {
+        // Active physical interfaces
+        assertTrue(DefaultWolSender.isEligibleInterface(dev.local.androidtvremote.wol.NetworkInterfaceDetails("wlan0", isLoopback = false, isUp = true, isVirtual = false)))
+        assertTrue(DefaultWolSender.isEligibleInterface(dev.local.androidtvremote.wol.NetworkInterfaceDetails("eth0", isLoopback = false, isUp = true, isVirtual = false)))
+        assertTrue(DefaultWolSender.isEligibleInterface(dev.local.androidtvremote.wol.NetworkInterfaceDetails("en0", isLoopback = false, isUp = true, isVirtual = false)))
+
+        // Loopback, down, or virtual
+        assertFalse(DefaultWolSender.isEligibleInterface(dev.local.androidtvremote.wol.NetworkInterfaceDetails("lo", isLoopback = true, isUp = true, isVirtual = false)))
+        assertFalse(DefaultWolSender.isEligibleInterface(dev.local.androidtvremote.wol.NetworkInterfaceDetails("wlan0", isLoopback = false, isUp = false, isVirtual = false)))
+        assertFalse(DefaultWolSender.isEligibleInterface(dev.local.androidtvremote.wol.NetworkInterfaceDetails("wlan0", isLoopback = false, isUp = true, isVirtual = true)))
+
+        // VPN, cellular, and virtual prefixes
+        assertFalse(DefaultWolSender.isEligibleInterface(dev.local.androidtvremote.wol.NetworkInterfaceDetails("tun0", isLoopback = false, isUp = true, isVirtual = false)))
+        assertFalse(DefaultWolSender.isEligibleInterface(dev.local.androidtvremote.wol.NetworkInterfaceDetails("tap0", isLoopback = false, isUp = true, isVirtual = false)))
+        assertFalse(DefaultWolSender.isEligibleInterface(dev.local.androidtvremote.wol.NetworkInterfaceDetails("ppp0", isLoopback = false, isUp = true, isVirtual = false)))
+        assertFalse(DefaultWolSender.isEligibleInterface(dev.local.androidtvremote.wol.NetworkInterfaceDetails("p2p0", isLoopback = false, isUp = true, isVirtual = false)))
+        assertFalse(DefaultWolSender.isEligibleInterface(dev.local.androidtvremote.wol.NetworkInterfaceDetails("dummy0", isLoopback = false, isUp = true, isVirtual = false)))
+        assertFalse(DefaultWolSender.isEligibleInterface(dev.local.androidtvremote.wol.NetworkInterfaceDetails("rmnet0", isLoopback = false, isUp = true, isVirtual = false)))
+        assertFalse(DefaultWolSender.isEligibleInterface(dev.local.androidtvremote.wol.NetworkInterfaceDetails("rmnet_data0", isLoopback = false, isUp = true, isVirtual = false)))
+        assertFalse(DefaultWolSender.isEligibleInterface(dev.local.androidtvremote.wol.NetworkInterfaceDetails("ccmni0", isLoopback = false, isUp = true, isVirtual = false)))
     }
 }
