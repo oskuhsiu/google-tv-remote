@@ -11,6 +11,10 @@ struct DebugWidgetPreviewView: View {
         tvName: "Living Room TV",
         availability: .unavailable
     )
+    private let longNameSnapshot = WidgetRemoteSnapshot(
+        tvName: "Living Room and Entertainment Center Television 客廳電視",
+        availability: .ready
+    )
 
     var body: some View {
         ScrollView {
@@ -41,11 +45,25 @@ struct DebugWidgetPreviewView: View {
                     family: .systemMedium,
                     snapshot: unavailableSnapshot
                 )
+                largePreview(title: "Large · Ready", snapshot: readySnapshot)
+                largePreview(title: "Large · Unavailable", snapshot: unavailableSnapshot)
+                largePreview(title: "Large · Long TV name", snapshot: longNameSnapshot)
+                largePreview(title: "Large · Accessibility text", snapshot: longNameSnapshot)
+                    .environment(\.dynamicTypeSize, .accessibility3)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 36)
         }
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+    }
+
+    private func largePreview(title: String, snapshot: WidgetRemoteSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(verbatim: title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            previewSurface(width: 338, height: 354, family: .systemLarge, snapshot: snapshot)
+        }
     }
 
     private func previewSurface(

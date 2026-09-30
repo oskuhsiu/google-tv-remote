@@ -26,13 +26,25 @@ The floating remote only appears while a TV is connected. Android keeps it runni
 
 The iOS 18+ target includes:
 
-- Small and medium **TV Remote** Home Screen Widgets with Up, Down, Left, Right, OK, Back, and Home buttons.
+- Small, medium, and large **TV Remote** Home Screen Widgets with Up, Down, Left, Right, OK, Back, and Home buttons. Resize the Widget in Home Screen edit mode; the large layout provides larger keypad buttons.
 - A Control Center **Remote** item that opens the compact remote in the app.
 - An optional **Keep Ready** setting that attempts to retain the authenticated TV connection in the background for faster Widget commands.
 
 Build and open the app once before adding the Widget. Then long-press the Home Screen, choose **Add Widget**, and search for **TV Remote**.
 
 Widget commands require an already paired and reachable TV session; the Widget does not perform discovery or pairing. Its buttons are disabled when the connection is unavailable, and iOS may suspend or terminate the app at any time. **Keep Ready** uses silent background audio, which can use more battery, is not guaranteed to keep the connection alive, and may be rejected during App Store review. A `NoKeepAlive` Xcode configuration is provided without this background-audio behavior.
+
+### Network Wake (WOL)
+
+Both phone apps provide **Network Wake** settings and a guide for finding the TV's MAC address. iOS uses manual MAC entry; Android also attempts a best-effort lookup after pairing.
+
+1. Turn on the TV and open its **Settings** or **Help** menu with the TV remote.
+2. Find the MAC address. Google TV Streamer and Chromecast use **Settings > System > About > Status**. TCL Google TV commonly shows it under **Network & Internet > the connected network**. Sony models may show it under **Help > Status & Diagnostics > Network status**. Menus vary by model.
+3. Enter the MAC for the TV's current connection: Wi-Fi MAC for Wi-Fi, or Ethernet/wired MAC for a cable. Keep the phone and TV on the same local network. If offered, enable **Network Standby** or **Remote Start**, and leave the TV plugged in.
+
+Use the settings' explicit wake-packet test after putting the TV in standby. Saving a MAC or successfully sending a packet does not confirm that the TV supports network wake or has woken up. Support varies by model and by Wi-Fi versus Ethernet.
+
+iOS device builds require Apple approval for the **Multicast Networking** capability and a provisioning profile that authorizes `com.apple.developer.networking.multicast`. The app declares this entitlement for WOL broadcasts. Allow **Local Network** access when prompted. Simulator UI checks do not verify physical-TV wake behavior or device provisioning.
 
 ## How to use on Android
 

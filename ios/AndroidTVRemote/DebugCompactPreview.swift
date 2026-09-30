@@ -14,6 +14,14 @@ enum DebugCompactPreview {
         lastConnectedAt: .now
     )
 
+    // All preview modes inject this sender: no fixture can send a real UDP packet.
+    struct WolSender: WolSending {
+        func send(macAddress: String) async throws {
+            guard WolPacket.make(macAddress: macAddress) != nil else { throw WolSendError.invalidMAC }
+            try Task.checkCancellation()
+        }
+    }
+
     @MainActor
     final class Session: RemoteSessionControlling {
         var onEvent: ((RemoteSessionEvent) -> Void)?

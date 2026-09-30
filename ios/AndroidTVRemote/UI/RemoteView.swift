@@ -6,11 +6,19 @@ struct RemoteView: View {
     let device: RemoteDevice
     let isConnected: Bool
     let openCompactRemote: () -> Void
+    let openNetworkWake: () -> Void
 
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 18) {
                 header
+
+                Button(action: openNetworkWake) {
+                    Label("Network Wake", systemImage: "wifi")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .disabled(!model.canConnectRemembered)
+                .accessibilityIdentifier("network-wake-settings")
 
                 VoiceIconButton(
                     state: model.voiceState,

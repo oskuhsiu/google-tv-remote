@@ -1,36 +1,336 @@
 {
-  "sourceLanguage" : "en",
-  "strings" : {
-    "Android TV Remote" : {
-
+  "sourceLanguage": "en",
+  "strings": {
+    "Android TV Remote": {},
+    "Enter the 6-character code shown on your TV.": {},
+    "Make sure the TV and iPhone are on the same local network.": {},
+    "Nearby TVs": {},
+    "OK": {},
+    "Open the app to connect": {},
+    "Remembered TV": {},
+    "Send to TV": {},
+    "This uses silent background audio to keep the TV connection ready. It may use more battery and is experimental.": {},
+    "Transport diagnostic": {},
+    "Network Wake": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "網路喚醒"
+          }
+        }
+      }
     },
-    "Enter the 6-character code shown on your TV." : {
-
+    "Test waking your TV from standby over the local network.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "測試透過區域網路喚醒待機中的電視。"
+          }
+        }
+      }
     },
-    "Make sure the TV and iPhone are on the same local network." : {
-
+    "MAC address": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MAC 位址"
+          }
+        }
+      }
     },
-    "Nearby TVs" : {
-
+    "Clear input": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清除輸入"
+          }
+        }
+      }
     },
-    "OK" : {
-
+    "Use the MAC address for the TV's current Wi-Fi or Ethernet connection.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請使用電視目前 Wi-Fi 或乙太網路連線的 MAC 位址。"
+          }
+        }
+      }
     },
-    "Open the app to connect" : {
-
+    "Wake support previously confirmed": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先前已確認支援喚醒"
+          }
+        }
+      }
     },
-    "Remembered TV" : {
-
+    "Wake support marked as unavailable": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已標記為不支援喚醒"
+          }
+        }
+      }
     },
-    "Send to TV" : {
-
+    "Wake support not confirmed": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未確認支援喚醒"
+          }
+        }
+      }
     },
-    "This uses silent background audio to keep the TV connection ready. It may use more battery and is experimental." : {
-
+    "No MAC address saved": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未儲存 MAC 位址"
+          }
+        }
+      }
     },
-    "Transport diagnostic" : {
-
+    "How to find the MAC address": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "如何找到 MAC 位址"
+          }
+        }
+      }
+    },
+    "Keep the TV plugged in and in standby. Enable Network Standby or Remote Start if your TV offers it. Wake support varies by model.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請保持電視接通電源並處於待機狀態。若電視提供「網路待機」或「遠端啟動」，請開啟。喚醒支援因型號而異。"
+          }
+        }
+      }
+    },
+    "Test Wake": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "測試喚醒"
+          }
+        }
+      }
+    },
+    "First put the TV in standby with its physical remote. Keep your iPhone on the same local network.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請先用電視遙控器讓電視進入待機。iPhone 須連接同一區域網路。"
+          }
+        }
+      }
+    },
+    "Save the MAC address before testing.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請先儲存 MAC 位址，再進行測試。"
+          }
+        }
+      }
+    },
+    "Clear MAC address": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清除 MAC 位址"
+          }
+        }
+      }
+    },
+    "Done": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完成"
+          }
+        }
+      }
+    },
+    "Save": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "儲存"
+          }
+        }
+      }
+    },
+    "Open Settings or Help on your TV.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在電視開啟「設定」或「說明」。"
+          }
+        }
+      }
+    },
+    "Look for About, Status, or Network status.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尋找「關於」、「狀態」或「網路狀態」。"
+          }
+        }
+      }
+    },
+    "Find the MAC address and enter it above.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "找到 MAC 位址，填入上方欄位。"
+          }
+        }
+      }
+    },
+    "For Wi-Fi, use the Wi-Fi MAC. For a network cable, use the Ethernet MAC.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wi-Fi 連線請使用 Wi-Fi MAC；網路線連線請使用乙太網路 MAC。"
+          }
+        }
+      }
+    },
+    "Examples (menus vary by model)": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "路徑範例（選單因型號而異）"
+          }
+        }
+      }
+    },
+    "Google TV Streamer / Chromecast: Settings → System → About → Status": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google TV Streamer／Chromecast：設定 → 系統 → 關於 → 狀態"
+          }
+        }
+      }
+    },
+    "TCL: Settings → Network & Internet → current network": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TCL：設定 → 網路與網際網路 → 目前網路"
+          }
+        }
+      }
+    },
+    "Sony: Help → Status & Diagnostics → Network status": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sony：說明 → 狀態與診斷 → 網路狀態"
+          }
+        }
+      }
+    },
+    "Enter a valid device MAC address, such as A4:77:33:12:AB:CD.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請輸入有效的裝置 MAC 位址，例如 A4:77:33:12:AB:CD。"
+          }
+        }
+      }
+    },
+    "MAC saved. Wake support is unverified.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已儲存 MAC 位址。尚未驗證喚醒支援。"
+          }
+        }
+      }
+    },
+    "MAC address cleared.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已清除 MAC 位址。"
+          }
+        }
+      }
+    },
+    "Could not save the MAC address. Try again.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法儲存 MAC 位址，請再試一次。"
+          }
+        }
+      }
+    },
+    "Wake packet sent. This does not confirm that the TV woke.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已送出喚醒封包。這不代表電視已喚醒。"
+          }
+        }
+      }
+    },
+    "Connect your iPhone to the same local Wi-Fi or Ethernet network as the TV. VPN and cellular connections cannot send this test.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請將 iPhone 連接至與電視相同的本地 Wi-Fi 或乙太網路。此測試無法透過 VPN 或行動網路傳送。"
+          }
+        }
+      }
+    },
+    "Could not send the wake packet. Check Local Network permission and your Wi-Fi connection, then try again.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法送出喚醒封包。請確認「區域網路」權限與 Wi-Fi 連線，再試一次。"
+          }
+        }
+      }
     }
   },
-  "version" : "1.0"
+  "version": "1.0"
 }

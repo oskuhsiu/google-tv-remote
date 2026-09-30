@@ -10,6 +10,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: 5.0
+    MARKETING_VERSION: 1.0.1
+    CURRENT_PROJECT_VERSION: 2
 packages:
   AndroidTVRemoteControl:
     path: Vendor/AndroidTVRemoteControl
@@ -31,6 +33,7 @@ targets:
       properties:
         com.apple.security.application-groups:
           - group.dev.local.AndroidTVRemote
+        com.apple.developer.networking.multicast: true
     dependencies:
       - package: AndroidTVRemoteControl
       - package: SwiftCertificates
@@ -42,9 +45,11 @@ targets:
     info:
       path: AndroidTVRemote/Info.plist
       properties:
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSBonjourServices:
           - _androidtvremote2._tcp
-        NSLocalNetworkUsageDescription: Find and connect to your Android TV on the local network.
+        NSLocalNetworkUsageDescription: Find, connect to, and send network wake packets to your TV on the local network.
         NSMicrophoneUsageDescription: Send your voice directly to the connected TV while you hold the Voice button.
         CFBundleURLTypes:
           - CFBundleURLName: dev.local.AndroidTVRemote
@@ -90,6 +95,8 @@ targets:
     info:
       path: AndroidTVRemoteControls/Info.plist
       properties:
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         CFBundleDisplayName: Remote
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension

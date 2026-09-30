@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DeviceView: View {
     @ObservedObject var model: AppModel
+    let openNetworkWake: () -> Void
 
     @State private var manualExpanded = false
     @State private var manualHost = ""
@@ -26,6 +27,13 @@ struct DeviceView: View {
                         .padding(.top, 28)
                     rememberedCard(record)
                         .padding(.top, 10)
+                    Button(action: openNetworkWake) {
+                        Label("Network Wake", systemImage: "wifi")
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    }
+                    .disabled(!model.canConnectRemembered)
+                    .accessibilityIdentifier("network-wake-settings")
+                    .padding(.top, 8)
                 }
 
                 sectionLabel("Nearby TVs")

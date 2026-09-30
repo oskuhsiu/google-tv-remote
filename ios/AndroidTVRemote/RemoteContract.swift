@@ -139,6 +139,7 @@ struct LastTvRecord: Codable, Equatable, Sendable {
     let bonjourLocator: BonjourLocator?
     let source: TvSource
     let lastConnectedAt: Date
+    var networkWake: NetworkWakeSettings?
 
     init(
         persistentDeviceID: String,
@@ -149,7 +150,8 @@ struct LastTvRecord: Codable, Equatable, Sendable {
         lastHost: String,
         bonjourLocator: BonjourLocator?,
         source: TvSource = .manual,
-        lastConnectedAt: Date = .distantPast
+        lastConnectedAt: Date = .distantPast,
+        networkWake: NetworkWakeSettings? = nil
     ) {
         self.persistentDeviceID = persistentDeviceID
         self.name = name
@@ -160,6 +162,34 @@ struct LastTvRecord: Codable, Equatable, Sendable {
         self.bonjourLocator = bonjourLocator
         self.source = source
         self.lastConnectedAt = lastConnectedAt
+        self.networkWake = networkWake
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case persistentDeviceID, name, clientIdentityFingerprint, pairingPeerFingerprint
+        case remotePeerFingerprint, lastHost, bonjourLocator, source, lastConnectedAt, networkWake
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        persistentDeviceID = try values.decode(String.self, forKey: .persistentDeviceID)
+        name = try values.decode(String.self, forKey: .name)
+        clientIdentityFingerprint = try values.decode(String.self, forKey: .clientIdentityFingerprint)
+        pairingPeerFingerprint = try values.decode(String.self, forKey: .pairingPeerFingerprint)
+        remotePeerFingerprint = try values.decode(String.self, forKey: .remotePeerFingerprint)
+        lastHost = try values.decode(String.self, forKey: .lastHost)
+        bonjourLocator = try values.decodeIfPresent(BonjourLocator.self, forKey: .bonjourLocator)
+        source = try values.decodeIfPresent(TvSource.self, forKey: .source) ?? .manual
+        lastConnectedAt = try values.decodeIfPresent(Date.self, forKey: .lastConnectedAt) ?? .distantPast
+        // Optional wake metadata must never invalidate a valid pairing trust tuple.
+        networkWake = try? values.decode(NetworkWakeSettings.self, forKey: .networkWake)
+    }
+
+    func hasSameTrust(as other: LastTvRecord) -> Bool {
+        persistentDeviceID == other.persistentDeviceID &&
+            clientIdentityFingerprint == other.clientIdentityFingerprint &&
+            pairingPeerFingerprint == other.pairingPeerFingerprint &&
+            remotePeerFingerprint == other.remotePeerFingerprint
     }
 
     var isComplete: Bool {

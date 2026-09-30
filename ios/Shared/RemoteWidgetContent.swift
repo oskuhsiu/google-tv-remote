@@ -10,6 +10,8 @@ struct RemoteWidgetContent: View {
         switch family {
         case .systemMedium:
             mediumLayout
+        case .systemLarge:
+            largeLayout
         default:
             RemoteWidgetPad(snapshot: snapshot)
                 .padding(8)
@@ -17,40 +19,63 @@ struct RemoteWidgetContent: View {
     }
 
     private var mediumLayout: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 6) {
-                Image(systemName: "av.remote.fill")
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(.tint)
+        GeometryReader { proxy in
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Image(systemName: "av.remote.fill")
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(.tint)
+                        .widgetAccentable()
 
-                Text(snapshot.tvName ?? String(localized: "TV Remote"))
-                    .font(.headline)
-                    .lineLimit(2)
+                    tvName
 
-                WidgetStatusLabel(availability: snapshot.availability, showsText: true)
+                    WidgetStatusLabel(availability: snapshot.availability, showsText: true)
 
-                Spacer(minLength: 0)
+                    Spacer(minLength: 0)
+                }
+                .frame(width: proxy.size.width * 0.34, alignment: .leading)
+
+                Divider()
+
+                RemoteWidgetPad(snapshot: snapshot)
             }
-            .frame(width: 112, alignment: .leading)
-
-            Divider()
-
-            RemoteWidgetPad(snapshot: snapshot)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    private var largeLayout: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
+                tvName
+                WidgetStatusLabel(availability: snapshot.availability, showsText: true)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+
+            RemoteWidgetPad(snapshot: snapshot)
+        }
+        .padding(12)
+    }
+
+    private var tvName: some View {
+        Text(snapshot.tvName ?? String(localized: "TV Remote"))
+            .font(.headline)
+            .lineLimit(2)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
 @available(iOS 18.0, *)
 private struct RemoteWidgetPad: View {
+    @ScaledMetric(relativeTo: .body) private var glyphScale: CGFloat = 1
+
     let snapshot: WidgetRemoteSnapshot
 
     var body: some View {
         GeometryReader { proxy in
-            let spacing: CGFloat = 4
-            let side = min(proxy.size.width, proxy.size.height)
-            let cell = (side - spacing * 2) / 3
+            let side = max(0, min(proxy.size.width, proxy.size.height))
+            let spacing = min(10, max(4, side * 0.025))
+            let cell = max(0, (side - spacing * 2) / 3)
 
             Grid(horizontalSpacing: spacing, verticalSpacing: spacing) {
                 GridRow {
@@ -78,7 +103,6 @@ private struct RemoteWidgetPad: View {
             .frame(width: side, height: side)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .aspectRatio(1, contentMode: .fit)
     }
 
     private func commandButton(
@@ -96,13 +120,16 @@ private struct RemoteWidgetPad: View {
                     Text(label)
                 }
             }
-            .font(.system(size: max(13, size * 0.34), weight: .semibold))
+            .font(.system(size: glyphSize(for: size), weight: .semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.5)
             .foregroundStyle(isPrimary ? Color.white : Color.primary)
             .frame(width: size, height: size)
-            .background(
-                isPrimary ? Color.accentColor : Color.primary.opacity(0.07),
-                in: Circle()
-            )
+            .background {
+                Circle()
+                    .fill(isPrimary ? Color.accentColor : Color.primary.opacity(0.07))
+                    .widgetAccentable(isPrimary)
+            }
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
@@ -119,14 +146,19 @@ private struct RemoteWidgetPad: View {
     private func openRemoteButton(size: CGFloat) -> some View {
         Button(intent: OpenCompactRemoteIntent()) {
             Image(systemName: "arrow.up.forward.app.fill")
-                .font(.system(size: max(13, size * 0.32), weight: .semibold))
+                .font(.system(size: glyphSize(for: size), weight: .semibold))
                 .foregroundStyle(.tint)
+                .widgetAccentable()
                 .frame(width: size, height: size)
                 .background(Color.accentColor.opacity(0.12), in: Circle())
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Open remote")
+    }
+
+    private func glyphSize(for cell: CGFloat) -> CGFloat {
+        min(cell * 0.5, max(13, cell * 0.34) * glyphScale)
     }
 }
 

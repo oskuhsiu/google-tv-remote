@@ -15,13 +15,15 @@ struct AndroidTVRemoteApp: App {
         let widgetCommandListener = WidgetRemoteCommandListener()
         self.widgetCommandListener = widgetCommandListener
 #if DEBUG
-        if arguments.contains("--compact-preview") || showsWidgetPreview {
+        let showsWolPreview = arguments.contains("--wol-preview") || arguments.contains("--wol-accessibility-preview")
+        if arguments.contains("--compact-preview") || showsWolPreview || showsWidgetPreview {
             let record = DebugCompactPreview.record
             let model = AppModel(
                 discovery: UnavailableDiscoveryService(),
                 session: DebugCompactPreview.Session(),
                 identity: DebugCompactPreview.Identity(),
                 store: DebugCompactPreview.Store(record: record),
+                wolSender: DebugCompactPreview.WolSender(),
                 backgroundKeepAlive: BackgroundKeepAliveController()
             )
             widgetCommandListener.snapshotProvider = { [weak model] in model?.widgetSnapshot }
@@ -29,7 +31,7 @@ struct AndroidTVRemoteApp: App {
                 model?.sendWidgetCommand(command) ?? false
             }
             _model = StateObject(wrappedValue: model)
-            _route = State(initialValue: .compactRemote)
+            _route = State(initialValue: showsWolPreview ? .fullRemote : .compactRemote)
             return
         }
 #endif
@@ -59,6 +61,9 @@ struct AndroidTVRemoteApp: App {
 #if DEBUG
                 if showsWidgetPreview {
                     DebugWidgetPreviewView()
+                } else if ProcessInfo.processInfo.arguments.contains("--wol-accessibility-preview") {
+                    RootView(model: model, route: $route)
+                        .environment(\.dynamicTypeSize, .accessibility3)
                 } else {
                     RootView(model: model, route: $route)
                 }

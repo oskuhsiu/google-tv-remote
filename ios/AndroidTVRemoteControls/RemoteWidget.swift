@@ -11,7 +11,7 @@ struct RemoteWidget: Widget {
         }
         .configurationDisplayName("TV Remote")
         .description("Control a connected TV without opening the app")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
         .contentMarginsDisabled()
     }
 }
