@@ -71,11 +71,11 @@
 
     <string name="network_wake_settings">Network Wake (WOL)</string>
     <string name="wol_dialog_title">Network Wake (Wake-on-LAN)</string>
-    <string name="wol_dialog_description">Enter your TV\'s Wi-Fi or Ethernet MAC address to wake it over the local network when in standby.</string>
+    <string name="wol_dialog_description">Enter the MAC address for your TV\'s current Wi-Fi or Ethernet connection to try waking it over the local network. Support varies by TV and connection. Saving a MAC does not confirm wake support.</string>
     <string name="wol_mac_address">MAC address</string>
     <string name="wol_mac_placeholder">AA:BB:CC:DD:EE:FF</string>
     <string name="wol_send_packet">Send Wake Packet</string>
-    <string name="wol_packet_sent">Wake packet sent</string>
+    <string name="wol_packet_sent">Wake packet sent. TV wake is not confirmed.</string>
     <string name="wol_save">Save</string>
     <string name="wol_clear">Clear MAC</string>
     <string name="wol_invalid_mac">Enter a valid MAC address (e.g. AA:BB:CC:DD:EE:FF)</string>
@@ -97,6 +97,6 @@
     <string name="wol_mac_guide_standby_description">If offered, enable Network Standby or Remote Start on your TV. Keep the TV plugged in. Network Wake availability varies by model and network connection.</string>
     <string name="wol_mac_guide_return">Back to MAC address</string>
     <string name="wake_tv">Wake TV</string>
-    <string name="wol_configured">WOL configured</string>
+    <string name="wol_configured">MAC saved</string>
     <string name="clear_input">Clear input</string>
 </resources>

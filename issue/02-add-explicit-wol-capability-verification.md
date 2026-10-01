@@ -4,7 +4,11 @@
 
 **Blocked by:** 01 — Restore Android WOL test gate.
 
-**Status:** ready-for-agent
+**Status:** deferred
+
+**Current decision:** 本次最小修正保留 best-effort WOL：有效 MAC 可供正常 Wake 嘗試使用，不新增 VERIFIED 門檻。UI 只表示 MAC 已儲存，並明確說明儲存 MAC 與送出封包不代表喚醒能力或結果已驗證。此決策也適用於 issue 03 的 verified-only 條件；下列完整驗證流程仍是後續工作，不能視為已完成。
+
+**Reason:** VERIFIED 需要可信的實際 TV 喚醒確認流程；單純新增狀態欄位不會提高喚醒成功率。沒有 MAC 時維持點選 remembered TV 卡片直接重連，暫不擴大 Wake 入口。
 
 - [ ] MAC 來源與 capability 狀態被持久化，且 MAC 維持 normalized representation。
 - [ ] 手動輸入或 best-effort ARP 候選只會成為未驗證資料；輸入格式正確不等於 WOL 已驗證。
@@ -14,4 +18,3 @@
 - [ ] 加入 model/storage/controller/UI 的 deterministic tests，覆蓋 legacy record、未驗證候選與已驗證資料。
 
 **Review evidence:** 6408a68 只保存 nullable MAC，並以 MAC 存在與否顯示 WOL configured；5be21c7 沒有補上 capability gate。
-
