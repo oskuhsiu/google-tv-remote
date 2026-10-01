@@ -27,6 +27,9 @@ struct DeviceView: View {
                         .padding(.top, 28)
                     rememberedCard(record)
                         .padding(.top, 10)
+                    if isConnecting {
+                        Button("Cancel", action: model.disconnect).buttonStyle(.bordered).padding(.top, 8)
+                    }
                     Button(action: openNetworkWake) {
                         Label("Network Wake", systemImage: "wifi")
                             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -36,15 +39,11 @@ struct DeviceView: View {
                     .padding(.top, 8)
                 }
 
-                sectionLabel("Nearby TVs")
-                    .padding(.top, 28)
-                discoveryContent
-                    .padding(.top, 10)
-
                 if model.rememberedRecord == nil {
-                    manualConnectCard
-                        .padding(.top, 28)
+                    sectionLabel("Nearby TVs").padding(.top, 28)
+                    discoveryContent.padding(.top, 10)
                 }
+                manualConnectCard.padding(.top, 28)
 
                 if let message = model.discoveryMessage {
                     inlineMessage(message, isError: false)
@@ -228,14 +227,18 @@ struct DeviceView: View {
                     Button("Connect") {
                         let host = manualHost.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !host.isEmpty, !host.contains(where: { $0.isWhitespace }) else { return }
-                        model.selectDiscoveredTV(
-                            TvCandidate(
-                                locatorKey: "manual:\(host)",
-                                name: host,
-                                host: host,
-                                source: .manual
+                        if model.rememberedRecord != nil {
+                            model.connectRemembered(host: host)
+                        } else {
+                            model.selectDiscoveredTV(
+                                TvCandidate(
+                                    locatorKey: "manual:\(host)",
+                                    name: host,
+                                    host: host,
+                                    source: .manual
+                                )
                             )
-                        )
+                        }
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)

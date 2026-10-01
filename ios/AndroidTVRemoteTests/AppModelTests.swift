@@ -256,7 +256,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(fixture.discovery.startCount, 1)
     }
 
-    func testPairingRequiredTransitionsToNeedsPairing() {
+    func testPairingRequiredStartsActualPairingBeforeRequestingCode() {
         let fixture = Fixture(record: .valid)
         fixture.model.enterForeground()
 
@@ -264,8 +264,45 @@ final class AppModelTests: XCTestCase {
             .failed(LastTvRecord.valid.device, reason: .pairingRequired, recoverable: true)
         )
 
-        XCTAssertEqual(fixture.model.state, .needsPairing(LastTvRecord.valid.device))
+        XCTAssertEqual(fixture.model.state, .pairing(LastTvRecord.valid.device))
+        XCTAssertEqual(fixture.session.pairingDevices, [LastTvRecord.valid.device])
         XCTAssertEqual(fixture.discovery.startCount, 0)
+    }
+
+    func testCancelRememberedTVRepairRetainsCredentialsAndDoesNotScan() throws {
+        let fixture = Fixture(record: .valid)
+        fixture.model.enterForeground()
+        fixture.session.emit(.failed(LastTvRecord.valid.device, reason: .pairingRequired, recoverable: true))
+        fixture.session.emit(.pairingCodeRequested(LastTvRecord.valid.device))
+        XCTAssertEqual(fixture.model.state, .needsPairing(LastTvRecord.valid.device))
+        fixture.model.cancelPairing()
+        XCTAssertEqual(try fixture.store.load(), .valid)
+        XCTAssertEqual(fixture.identity.deleteCount, 0)
+        XCTAssertEqual(fixture.discovery.startCount, 0)
+        XCTAssertEqual(fixture.model.state, .disconnected(LastTvRecord.valid.device))
+    }
+
+    func testBackgroundClientRejectionDefersRepairUntilForeground() throws {
+        let fixture = Fixture(record: .valid, keepReadyEnabled: true)
+        fixture.model.enterForeground()
+        fixture.session.emit(.connected(LastTvRecord.valid.device))
+        fixture.model.enterBackground()
+        let disconnects = fixture.session.disconnectCount
+        fixture.session.emit(.failed(LastTvRecord.valid.device, reason: .pairingRequired, recoverable: true))
+        XCTAssertTrue(fixture.session.pairingDevices.isEmpty)
+        XCTAssertEqual(fixture.session.disconnectCount, disconnects + 1)
+        XCTAssertEqual(fixture.model.state, .disconnected(LastTvRecord.valid.device))
+        XCTAssertEqual(try fixture.store.load(), .valid)
+        XCTAssertEqual(fixture.identity.deleteCount, 0)
+        fixture.session.emit(.pairingCodeRequested(LastTvRecord.valid.device))
+        XCTAssertEqual(fixture.model.state, .disconnected(LastTvRecord.valid.device))
+        fixture.model.enterForeground()
+        XCTAssertEqual(fixture.session.connectedRecords.count, 2)
+        XCTAssertTrue(fixture.session.pairingDevices.isEmpty)
+        XCTAssertEqual(fixture.discovery.startCount, 0)
+        fixture.session.emit(.failed(LastTvRecord.valid.device, reason: .pairingRequired, recoverable: true))
+        XCTAssertEqual(fixture.session.pairingDevices, [LastTvRecord.valid.device])
+        XCTAssertEqual(fixture.model.state, .pairing(LastTvRecord.valid.device))
     }
 
     func testConnectionLossRetriesAfterOneTwoFourSecondsThenFails() async {
@@ -403,8 +440,9 @@ private final class RecordingSession: RemoteSessionControlling {
     var onVoiceStateChanged: ((VoiceState) -> Void)?
     var onVoiceError: ((RemoteError) -> Void)?
     var connectedRecords: [LastTvRecord] = []
+    var pairingDevices: [RemoteDevice] = []
     var disconnectCount = 0
-    func startPairing(with device: RemoteDevice) {}
+    func startPairing(with device: RemoteDevice) { pairingDevices.append(device) }
     func submitPairingCode(_ code: String) {}
     func connect(to record: LastTvRecord) { connectedRecords.append(record) }
     func disconnect() { disconnectCount += 1 }

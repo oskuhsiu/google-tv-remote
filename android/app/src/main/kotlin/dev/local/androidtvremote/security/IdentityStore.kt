@@ -13,10 +13,12 @@ import java.security.cert.X509Certificate
 import java.util.Date
 import javax.security.auth.x500.X500Principal
 
-data class ClientIdentity(
+// Keep certificate material out of accidental toString diagnostics.
+class ClientIdentity(
     val privateKey: PrivateKey,
     val certificate: X509Certificate,
     val fingerprint: String,
+    val clientName: String? = null,
 )
 
 class IdentityStore {
@@ -39,13 +41,14 @@ class IdentityStore {
             store.deleteEntry(ALIAS)
             return null
         }
-        return ClientIdentity(privateKey, certificate, certificate.sha256Fingerprint())
+        return ClientIdentity(privateKey, certificate, certificate.sha256Fingerprint(), CertificateIdentity.uniqueClientName(certificate))
     }
 
     fun loadOrCreate(): ClientIdentity {
         load()?.let { return it }
         delete()
 
+        val clientName = CertificateIdentity.newClientName()
         val now = System.currentTimeMillis()
         val generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA, ANDROID_KEY_STORE)
         generator.initialize(
@@ -60,7 +63,7 @@ class IdentityStore {
                     KeyProperties.ENCRYPTION_PADDING_NONE,
                     KeyProperties.ENCRYPTION_PADDING_RSA_PKCS1,
                 )
-                .setCertificateSubject(X500Principal("CN=TV Remote"))
+                .setCertificateSubject(X500Principal("CN=$clientName"))
                 .setCertificateSerialNumber(BigInteger.valueOf(now))
                 .setCertificateNotBefore(Date(now - ONE_DAY_MILLIS))
                 .setCertificateNotAfter(Date(now + TEN_YEARS_MILLIS))
@@ -69,6 +72,41 @@ class IdentityStore {
         )
         generator.generateKeyPair()
         return checkNotNull(load()) { "AndroidKeyStore did not retain the generated identity" }
+    }
+
+    /** Stage a renamed certificate in memory; leave the hardware key and stored chain untouched. */
+    fun prepareUniqueIdentity(existing: ClientIdentity): ClientIdentity {
+        if (CertificateIdentity.uniqueClientName(existing.certificate) != null) return existing
+        val clientName = CertificateIdentity.newClientName()
+        val certificate = CertificateIdentity.selfSigned(existing.privateKey, existing.certificate.publicKey, clientName)
+        return ClientIdentity(existing.privateKey, certificate, certificate.sha256Fingerprint(), clientName)
+    }
+
+    /** Call only after pairing and the pinned remote handshake; also accepts the old identity for rollback. */
+    fun commit(identity: ClientIdentity) {
+        val store = keyStore()
+        val privateKey = store.getKey(ALIAS, null) as? PrivateKey
+            ?: error("Client identity is unavailable")
+        val oldChain = store.getCertificateChain(ALIAS)
+            ?: error("Client certificate is unavailable")
+        check(identity.fingerprint == identity.certificate.sha256Fingerprint()) { "Client certificate fingerprint does not match" }
+        identity.certificate.verify(identity.certificate.publicKey)
+        identity.certificate.checkValidity()
+        // Prove the replacement belongs to the current hardware key, without exporting it.
+        val challenge = ByteArray(32).also(java.security.SecureRandom()::nextBytes)
+        val signature = java.security.Signature.getInstance("SHA256withRSA").apply {
+            initSign(privateKey); update(challenge)
+        }.sign()
+        check(java.security.Signature.getInstance("SHA256withRSA").apply {
+            initVerify(identity.certificate.publicKey); update(challenge)
+        }.verify(signature)) { "Client certificate does not match the hardware key" }
+        try {
+            store.setKeyEntry(ALIAS, privateKey, null, arrayOf(identity.certificate))
+        } catch (_: Exception) {
+            // Older Keystore implementations update certificate entries in multiple writes.
+            runCatching { store.setKeyEntry(ALIAS, privateKey, null, oldChain) }
+            throw IllegalStateException("Unable to update the client certificate")
+        }
     }
 
     fun delete() {

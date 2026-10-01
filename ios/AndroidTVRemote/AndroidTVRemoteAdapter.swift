@@ -1,5 +1,6 @@
 import AndroidTVRemoteControl
 import Foundation
+import Network
 import Security
 import SwiftProtobuf
 
@@ -10,7 +11,11 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
     var onVoiceError: ((RemoteError) -> Void)?
 
     private let identityStore: IdentityStore
-    private let clientNameStore: ClientNameStore
+    private var pairingExpectedRecord: LastTvRecord?
+    private var pairedIdentityDraft: ClientIdentity?
+    private let rememberedResolver = RememberedTvResolver()
+    private var recoveryRecord: LastTvRecord?
+    private var allowsAddressRecovery = false
     private var pairingManager: PairingManager?
     private var pairingTimeoutTask: Task<Void, Never>?
     private var remoteManager: RemoteManager?
@@ -25,58 +30,67 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
     private var activeVoiceRun: VoiceRun?
     private var voiceTask: Task<Void, Never>?
 
-    init(
-        identityStore: IdentityStore,
-        clientNameStore: ClientNameStore = ClientNameStore()
-    ) {
-        self.identityStore = identityStore
-        self.clientNameStore = clientNameStore
+    init(identityStore: IdentityStore) { self.identityStore = identityStore }
+
+    func rePair(to record: LastTvRecord) {
+        do {
+            let identity = try identityStore.identityForRepair()
+            startPairing(with: record.device, identity: identity, expectedRecord: record)
+        } catch { onEvent?(.failed(record.device, reason: .unknown, recoverable: true)) }
     }
 
     func startPairing(with device: RemoteDevice) {
+        do { startPairing(with: device, identity: try identityStore.loadOrCreate(), expectedRecord: nil) }
+        catch { onEvent?(.failed(device, reason: .unknown, recoverable: true)) }
+    }
+
+    private func startPairing(with device: RemoteDevice, identity: ClientIdentity, expectedRecord: LastTvRecord?) {
         disconnect()
+        pairingExpectedRecord = expectedRecord
+        let trustCapture = FirstUseTrustCapture(expectedFingerprint: expectedRecord?.pairingPeerFingerprint)
+        let tlsManager = TLSManager { .Result(identity.tlsImportItems) }
+        tlsManager.secTrustClosure = { trust in
+            trustCapture.evaluate(trust)
+        }
 
-        do {
-            let identity = try identityStore.loadOrCreate()
-            let trustCapture = FirstUseTrustCapture()
-            let tlsManager = TLSManager { .Result(identity.tlsImportItems) }
-            tlsManager.secTrustClosure = { trust in
-                trustCapture.evaluate(trust)
+        let cryptoManager = CryptoManager()
+        cryptoManager.clientPublicCertificate = { .Result(identity.publicKey) }
+        cryptoManager.serverPublicCertificate = {
+            guard let publicKey = trustCapture.publicKey else {
+                return .Error(.noServerPublicCertificate)
             }
+            return .Result(publicKey)
+        }
 
-            let cryptoManager = CryptoManager()
-            cryptoManager.clientPublicCertificate = { .Result(identity.publicKey) }
-            cryptoManager.serverPublicCertificate = {
-                guard let publicKey = trustCapture.publicKey else {
-                    return .Error(.noServerPublicCertificate)
-                }
-                return .Result(publicKey)
+        let manager = PairingManager(tlsManager, cryptoManager, nil)
+        manager.stateChanged = { [weak self, weak manager] state in
+            Task { @MainActor in
+                guard let self, let manager, self.pairingManager === manager else { return }
+                self.handlePairing(
+                    state,
+                    manager: manager,
+                    device: device,
+                    identity: identity,
+                    trustCapture: trustCapture
+                )
             }
+        }
+        pairingManager = manager
+        schedulePairingTimeout(after: 8, manager: manager, device: device)
+        manager.connect(
+            device.host,
+            identity.clientName,
+            "atvremote",
+            timeout: 8
+        )
+    }
 
-            let manager = PairingManager(tlsManager, cryptoManager, nil)
-            manager.stateChanged = { [weak self, weak manager] state in
-                Task { @MainActor in
-                    guard let self, let manager, self.pairingManager === manager else { return }
-                    self.handlePairing(
-                        state,
-                        manager: manager,
-                        device: device,
-                        identity: identity,
-                        trustCapture: trustCapture
-                    )
-                }
-            }
-            pairingManager = manager
-            schedulePairingTimeout(after: 8, manager: manager, device: device)
-            manager.connect(
-                device.host,
-                clientNameStore.loadOrCreate(),
-                "atvremote",
-                timeout: 8
-            )
-        } catch {
-            disconnect()
-            onEvent?(.failed(device, reason: .unknown, recoverable: true))
+    func commitPairing(persistMetadata: () throws -> Void) throws {
+        if let identity = pairedIdentityDraft {
+            try identityStore.commitCertificate(identity, persistMetadata: persistMetadata)
+            pairedIdentityDraft = nil
+        } else {
+            try persistMetadata()
         }
     }
 
@@ -92,13 +106,18 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
     }
 
     func connect(to record: LastTvRecord) {
+        connect(to: record, allowResolution: true)
+    }
+
+    private func connect(to record: LastTvRecord, allowResolution: Bool) {
         let device = record.device
         guard record.isComplete else {
             onEvent?(.failed(device, reason: .trustChanged, recoverable: false))
             return
         }
         disconnect()
-
+        recoveryRecord = record
+        allowsAddressRecovery = allowResolution
         do {
             guard let identity = try identityStore.load(),
                   identity.fingerprint == record.clientIdentityFingerprint else {
@@ -112,7 +131,7 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
             }
 
             let deviceInfo = CommandNetwork.DeviceInfo(
-                clientNameStore.loadOrCreate(),
+                identity.clientName,
                 "Apple",
                 "1.0.0",
                 "dev.local.AndroidTVRemote",
@@ -148,6 +167,11 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
     }
 
     func disconnect() {
+        pairedIdentityDraft = nil
+        pairingExpectedRecord = nil
+        rememberedResolver.cancel()
+        recoveryRecord = nil
+        allowsAddressRecovery = false
         cancelVoiceForDisconnect()
         pairingTimeoutTask?.cancel()
         pairingTimeoutTask = nil
@@ -197,7 +221,7 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
             )
 
         case .error(let error):
-            failPairing(device: device, reason: pairingFailureReason(error))
+            failPairing(device: device, reason: trustCapture.trustChanged ? .trustChanged : pairingFailureReason(error))
 
         case .idle, .extractTLSparams, .connectionSetUp, .connectionPrepairing,
              .connected, .pairingRequestSent, .pairingResponseSuccess,
@@ -212,13 +236,13 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
         identity: ClientIdentity,
         pairingPeerFingerprint: String
     ) {
-        let trustCapture = FirstUseTrustCapture()
+        let trustCapture = FirstUseTrustCapture(expectedFingerprint: pairingExpectedRecord?.remotePeerFingerprint)
         let tlsManager = TLSManager { .Result(identity.tlsImportItems) }
         tlsManager.secTrustClosure = { trust in
             trustCapture.evaluate(trust)
         }
         let deviceInfo = CommandNetwork.DeviceInfo(
-            clientNameStore.loadOrCreate(),
+            identity.clientName,
             "Apple",
             "1.0.0",
             "dev.local.AndroidTVRemote",
@@ -277,14 +301,22 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
                 lastHost: device.host,
                 bonjourLocator: device.locator,
                 source: device.source,
-                lastConnectedAt: Date()
+                lastConnectedAt: Date(),
+                networkWake: pairingExpectedRecord?.networkWake
             )
+            pairedIdentityDraft = identity
+            pairingExpectedRecord = nil
             connectingDevice = record.device
             didReachConnectedState = true
             onVoiceStateChanged?(voiceSupported ? .idle : .unavailable)
             onEvent?(.pairingCompleted(record))
 
         case .error(let error):
+            if trustCapture.trustChanged {
+                disconnect()
+                onEvent?(.failed(device, reason: .trustChanged, recoverable: false))
+                return
+            }
             let outcome = trustCapture.fingerprint.map(PeerTrustOutcome.accepted)
                 ?? .missingCertificate
             let eventDevice = connectingDevice ?? device
@@ -321,6 +353,8 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
     }
 
     private func failPairing(device: RemoteDevice, reason: RemoteError) {
+        pairedIdentityDraft = nil
+        pairingExpectedRecord = nil
         pairingTimeoutTask?.cancel()
         pairingTimeoutTask = nil
         pairingManager?.stateChanged = nil
@@ -328,7 +362,7 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
         pairingManager?.disconnect()
         pairingManager = nil
         connectingDevice = nil
-        onEvent?(.failed(device, reason: reason, recoverable: true))
+        onEvent?(.failed(device, reason: reason, recoverable: reason != .trustChanged))
     }
 
     private func pairingFailureReason(_ error: AndroidTVRemoteControlError) -> RemoteError {
@@ -413,7 +447,10 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
             }
             didReachConnectedState = true
             onVoiceStateChanged?(voiceSupported ? .idle : .unavailable)
-            onEvent?(.connected(device))
+            if let record = recoveryRecord {
+                let updated = record.replacingHost(device.host, connectedAt: Date())
+                onEvent?(.pairingCompleted(updated))
+            } else { onEvent?(.connected(device)) }
 
         case .error(let error):
             let result = AdapterErrorPolicy.failure(
@@ -422,12 +459,39 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
                 device: device,
                 wasConnected: didReachConnectedState
             )
+            if !didReachConnectedState, allowsAddressRecovery, case .notEvaluated = gate.outcome,
+               let record = recoveryRecord,
+               AdapterErrorPolicy.isAddressFailure(error) {
+                resolveRemembered(record, allowRetry: true)
+                return
+            }
             disconnect()
             onEvent?(result)
 
         case .idle, .connectionSetUp, .connectionPrepairing, .connected,
              .fisrtConfigMessageReceived, .firstConfigSent, .secondConfigSent:
             break
+        }
+    }
+
+    private func resolveRemembered(_ record: LastTvRecord, allowRetry: Bool) {
+        guard allowRetry, let locator = record.bonjourLocator else {
+            disconnect()
+            onEvent?(.failed(record.device, reason: .tvNotFound, recoverable: true))
+            return
+        }
+        remoteManager?.stateChanged = nil
+        remoteManager?.disconnect()
+        remoteManager = nil
+        allowsAddressRecovery = false
+        rememberedResolver.resolve(locator) { [weak self] host in
+            guard let self else { return }
+            guard let host, host != record.lastHost else {
+                self.disconnect()
+                self.onEvent?(.failed(record.device, reason: .tvNotFound, recoverable: true))
+                return
+            }
+            self.connect(to: record.replacingHost(host), allowResolution: false)
         }
     }
 
@@ -738,8 +802,15 @@ enum PeerTrustOutcome: Equatable {
 }
 
 final class FirstUseTrustCapture: @unchecked Sendable {
+    private let expectedFingerprint: String?
+    init(expectedFingerprint: String? = nil) { self.expectedFingerprint = expectedFingerprint }
     private let lock = NSLock()
     private var storedFingerprint: String?
+    private var storedChanged = false
+
+    var trustChanged: Bool {
+        lock.lock(); defer { lock.unlock() }; return storedChanged
+    }
     private var storedPublicKey: SecKey?
 
     var fingerprint: String? {
@@ -759,8 +830,12 @@ final class FirstUseTrustCapture: @unchecked Sendable {
               let publicKey = SecTrustCopyKey(trust) else {
             return false
         }
+        let fingerprint = CertificateFingerprint.sha256(certificate)
+        guard expectedFingerprint.map({ PeerTrustGate.accepts(expected: $0, actual: fingerprint) }) ?? true else {
+            lock.lock(); storedChanged = true; lock.unlock(); return false
+        }
         lock.lock()
-        storedFingerprint = CertificateFingerprint.sha256(certificate)
+        storedFingerprint = fingerprint
         storedPublicKey = publicKey
         lock.unlock()
         return true
@@ -814,6 +889,33 @@ final class PeerTrustGate: @unchecked Sendable {
 }
 
 enum AdapterErrorPolicy {
+    static func isAddressFailure(_ error: AndroidTVRemoteControlError) -> Bool {
+        let underlying: Error
+        switch error {
+        case .connectionFailed(let value), .connectionWaitingError(let value): underlying = value
+        default: return false
+        }
+        guard let network = underlying as? NWError else { return false }
+        if case .posix = network { return true }
+        if case .dns = network { return true }
+        return false
+    }
+
+    static func isClientRejection(_ error: AndroidTVRemoteControlError) -> Bool {
+        let underlying: Error
+        switch error {
+        case .connectionFailed(let e), .connectionWaitingError(let e), .receiveDataError(let e), .sendDataError(let e): underlying = e
+        default: return false
+        }
+        if let network = underlying as? NWError, case .tls(let code) = network {
+            return [errSSLPeerBadCert, errSSLPeerCertUnknown, errSSLPeerUnknownCA].contains(code)
+        }
+        let statusError = underlying as NSError
+        guard statusError.domain == NSOSStatusErrorDomain,
+              let code = OSStatus(exactly: statusError.code) else { return false }
+        return [errSSLPeerBadCert, errSSLPeerCertUnknown, errSSLPeerUnknownCA].contains(code)
+    }
+
     static func failure(
         error: AndroidTVRemoteControlError,
         for outcome: PeerTrustOutcome,
@@ -827,6 +929,9 @@ enum AdapterErrorPolicy {
             break
         }
 
+        if case .accepted = outcome, !wasConnected, isClientRejection(error) {
+            return .failed(device, reason: .pairingRequired, recoverable: true)
+        }
         switch error {
         case .connectionFailed, .connectionWaitingError:
             if wasConnected {

@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0193EF52EB51839278746E17 /* SwiftProtobuf in Frameworks */ = {isa = PBXBuildFile; productRef = ABC7EBD9FF4E9962AF04D933 /* SwiftProtobuf */; };
+		0217A4DFD2B58A7DE6570C9E /* IdentityRepairTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8182F7CFCF742A6641B31457 /* IdentityRepairTests.swift */; };
 		0B69875EDA2672B5BFDE011E /* WolPacket.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81EAF47054C3A5FE64DA4B39 /* WolPacket.swift */; };
 		0C5484326979F7CF39571583 /* AndroidTVRemoteControlsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91716277358941BE48DDFBD2 /* AndroidTVRemoteControlsBundle.swift */; };
 		101D85791D7871453B3B81BD /* RemoteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CC34777700B24AE0A82F946 /* RemoteView.swift */; };
@@ -39,6 +40,7 @@
 		90D6F7B65D788C2983937C2E /* SendWidgetRemoteCommandIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B35E119E45691B5D06259E80 /* SendWidgetRemoteCommandIntent.swift */; };
 		9817D4798273F7057172136D /* OpenCompactRemoteIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6B95396C16114EA21A94728 /* OpenCompactRemoteIntent.swift */; };
 		9BAD5AF8EC7540F3B1B48403 /* RemoteContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4497F79AED9F60A60F10B319 /* RemoteContract.swift */; };
+		9EEC173E38AD095F56C17867 /* RememberedTvResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A87B674878760B8191E922BE /* RememberedTvResolver.swift */; };
 		A0D3D6269DF63CFDB8DA8241 /* OpenCompactRemoteIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6B95396C16114EA21A94728 /* OpenCompactRemoteIntent.swift */; };
 		A55FBCC3953E622CD21D2297 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 0C43888BCFA60367C15CB02E /* Localizable.xcstrings */; };
 		A6C8395625AF51964DED67C5 /* VoiceCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E058033E221A9FF762589D8 /* VoiceCapture.swift */; };
@@ -107,6 +109,7 @@
 		6B3702CCEEB715E25E50A15F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		6FCFC9D82FF766D0469BF43B /* KeepReadyControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeepReadyControl.swift; sourceTree = "<group>"; };
 		76C63A0912225965186A4C12 /* AndroidTVRemoteControls.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AndroidTVRemoteControls.entitlements; sourceTree = "<group>"; };
+		8182F7CFCF742A6641B31457 /* IdentityRepairTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentityRepairTests.swift; sourceTree = "<group>"; };
 		81EAF47054C3A5FE64DA4B39 /* WolPacket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WolPacket.swift; sourceTree = "<group>"; };
 		8283E98FE3D6BD0D82AAB34B /* Info-NoKeepAlive.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "Info-NoKeepAlive.plist"; sourceTree = "<group>"; };
 		89B1E814AADBD099A058FE77 /* WidgetRemoteBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetRemoteBridge.swift; sourceTree = "<group>"; };
@@ -119,6 +122,7 @@
 		A2F674D28BA239BD77790624 /* RemotePressControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePressControl.swift; sourceTree = "<group>"; };
 		A33F2861444FA055560B3E59 /* BackgroundKeepAliveController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundKeepAliveController.swift; sourceTree = "<group>"; };
 		A83E1B4957E607A8D1F407C9 /* NetworkWakeSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkWakeSettingsView.swift; sourceTree = "<group>"; };
+		A87B674878760B8191E922BE /* RememberedTvResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RememberedTvResolver.swift; sourceTree = "<group>"; };
 		AA011500D4526EB4D2E816D2 /* RemoteWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteWidget.swift; sourceTree = "<group>"; };
 		B35E119E45691B5D06259E80 /* SendWidgetRemoteCommandIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendWidgetRemoteCommandIntent.swift; sourceTree = "<group>"; };
 		B9A613EC057923C3379303BA /* AndroidTVRemote.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AndroidTVRemote.entitlements; sourceTree = "<group>"; };
@@ -133,7 +137,7 @@
 		E45B7943180C15098EB1C050 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		EAC7F42F7FD72CE43DA8D635 /* IdentityStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentityStore.swift; sourceTree = "<group>"; };
 		EF8BAE84E8C584999D612894 /* NetworkWakeSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkWakeSettings.swift; sourceTree = "<group>"; };
-		F63C72E4EF10F5E9B5D46F41 /* AndroidTVRemote.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AndroidTVRemote.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F63C72E4EF10F5E9B5D46F41 /* AndroidTVRemote.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AndroidTVRemote.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F6B95396C16114EA21A94728 /* OpenCompactRemoteIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCompactRemoteIntent.swift; sourceTree = "<group>"; };
 		FDAC031D4D2E1DDBF1738D36 /* AndroidTVRemoteTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = AndroidTVRemoteTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -166,6 +170,7 @@
 			isa = PBXGroup;
 			children = (
 				47751DB22B194A2D9204EB67 /* AppModelTests.swift */,
+				8182F7CFCF742A6641B31457 /* IdentityRepairTests.swift */,
 				19DBED4B26E857B96CA42981 /* NetworkWakeTests.swift */,
 				A0A63BBBAAD86234AC9DF0E3 /* ProtocolAdapterTests.swift */,
 			);
@@ -239,6 +244,7 @@
 				C94147E89FD6881FB4877D33 /* LastTvStore.swift */,
 				EF8BAE84E8C584999D612894 /* NetworkWakeSettings.swift */,
 				13CC06D6E33D1D8D81C42095 /* OutboundWriter.swift */,
+				A87B674878760B8191E922BE /* RememberedTvResolver.swift */,
 				4497F79AED9F60A60F10B319 /* RemoteContract.swift */,
 				8E058033E221A9FF762589D8 /* VoiceCapture.swift */,
 				1EB5FA00E161454010855B2D /* WidgetRemoteCommandListener.swift */,
@@ -355,7 +361,6 @@
 						ProvisioningStyle = Automatic;
 					};
 					A23CC1BB705E09B9D6BCB8BE = {
-						DevelopmentTeam = T9ZD5M42MB;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -444,6 +449,7 @@
 				A0D3D6269DF63CFDB8DA8241 /* OpenCompactRemoteIntent.swift in Sources */,
 				B2E328D2329E83D924EB5782 /* OutboundWriter.swift in Sources */,
 				61CA9FA6DCFA85E52342ADA8 /* PairingView.swift in Sources */,
+				9EEC173E38AD095F56C17867 /* RememberedTvResolver.swift in Sources */,
 				9BAD5AF8EC7540F3B1B48403 /* RemoteContract.swift in Sources */,
 				839DE94FA6C3182C9458A241 /* RemotePressControl.swift in Sources */,
 				101D85791D7871453B3B81BD /* RemoteView.swift in Sources */,
@@ -464,6 +470,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E95D7C2B23F1BD3CB4DE7EBA /* AppModelTests.swift in Sources */,
+				0217A4DFD2B58A7DE6570C9E /* IdentityRepairTests.swift in Sources */,
 				E481C09704D3ECA147E22B5E /* NetworkWakeTests.swift in Sources */,
 				3D0B26C206AF4B809AF28239 /* ProtocolAdapterTests.swift in Sources */,
 			);
@@ -541,7 +548,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -554,7 +561,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0.2;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -599,7 +606,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -618,7 +625,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0.2;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -685,7 +692,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -698,7 +705,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0.2;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

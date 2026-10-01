@@ -9,6 +9,8 @@ struct ClientIdentity {
     let certificate: SecCertificate
     let publicKey: SecKey
     let fingerprint: String
+    let privateKey: SecKey
+    let clientName: String
 
     var tlsImportItems: CFArray {
         [[kSecImportItemIdentity as String: identity]] as CFArray
@@ -42,6 +44,13 @@ final class ClientNameStore {
         let suffix = generatedSuffix()
         try? saveSuffix(suffix)
         return "TV Remote-\(suffix)"
+    }
+
+    static func generateUniqueName() throws -> String {
+        var bytes = [UInt8](repeating: 0, count: 16)
+        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        guard status == errSecSuccess else { throw IdentityStoreError.randomGeneration(status: status) }
+        return "TV Remote-" + bytes.map { String(format: "%02x", $0) }.joined()
     }
 
     private func generatedSuffix() -> String {
@@ -101,8 +110,10 @@ final class ClientNameStore {
 final class IdentityStore {
     private let keyTag: Data
     private let certificateLabel: String
+    private let clientNameStore: ClientNameStore
 
     init(namespace: String = "production") {
+        clientNameStore = ClientNameStore(namespace: namespace)
         let prefix = "dev.local.AndroidTVRemote.identity.\(namespace)"
         keyTag = Data("\(prefix).key".utf8)
         certificateLabel = "\(prefix).certificate"
@@ -117,7 +128,8 @@ final class IdentityStore {
                 identity: identity,
                 certificate: certificate,
                 publicKey: SecKeyCopyPublicKey(key)!,
-                fingerprint: CertificateFingerprint.sha256(certificate)
+                fingerprint: CertificateFingerprint.sha256(certificate),
+                privateKey: key, clientName: clientName(for: certificate)
             )
         }
 
@@ -138,8 +150,60 @@ final class IdentityStore {
             identity: identity,
             certificate: certificate,
             publicKey: SecKeyCopyPublicKey(key)!,
-            fingerprint: CertificateFingerprint.sha256(certificate)
+            fingerprint: CertificateFingerprint.sha256(certificate),
+            privateKey: key, clientName: clientName(for: certificate)
         )
+    }
+
+    private func clientName(for certificate: SecCertificate) -> String {
+        if let name = SecCertificateCopySubjectSummary(certificate) as String?, Self.isUniqueName(name) { return name }
+        return clientNameStore.loadOrCreate()
+    }
+
+    static func isUniqueName(_ name: String) -> Bool {
+        let prefix = "TV Remote-"
+        guard name.hasPrefix(prefix) else { return false }
+        let suffix = name.dropFirst(prefix.count)
+        return suffix.utf8.count == 32 && suffix.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) }
+    }
+
+    /// Repair only the client certificate; the existing Keychain private key is unchanged.
+    func identityForRepair() throws -> ClientIdentity {
+        guard let existing = try load() else { throw IdentityStoreError.identityCreation }
+        let commonName = SecCertificateCopySubjectSummary(existing.certificate) as String? ?? ""
+        if Self.isUniqueName(commonName) { return existing }
+        let certificate = try createCertificate(privateKey: existing.privateKey, commonName: ClientNameStore.generateUniqueName())
+        guard let identity = makeIdentity(certificate: certificate, privateKey: existing.privateKey) else {
+            throw IdentityStoreError.identityCreation
+        }
+        return ClientIdentity(identity: identity, certificate: certificate, publicKey: existing.publicKey,
+            fingerprint: CertificateFingerprint.sha256(certificate), privateKey: existing.privateKey,
+            clientName: clientName(for: certificate))
+    }
+
+    /// Called only after pinned pairing and authenticated remote handshake, with rollback on metadata failure.
+    func commitCertificate(_ identity: ClientIdentity, persistMetadata: () throws -> Void) throws {
+        guard let original = try loadCertificate() else { throw IdentityStoreError.identityCreation }
+        if CertificateFingerprint.sha256(original) == identity.fingerprint {
+            try persistMetadata()
+            return
+        }
+        try replaceCertificate(identity.certificate)
+        do { try persistMetadata() }
+        catch {
+            try replaceCertificate(original)
+            throw error
+        }
+    }
+
+    private func replaceCertificate(_ certificate: SecCertificate) throws {
+        let original = try loadCertificate()
+        try deleteItem(query: [kSecClass as String: kSecClassCertificate, kSecAttrLabel as String: certificateLabel], operation: "replace certificate")
+        do { try saveCertificate(certificate) }
+        catch {
+            if let original { try saveCertificate(original) }
+            throw error
+        }
     }
 
     func status(matching fingerprint: String) throws -> ClientIdentityStatus {
@@ -179,10 +243,21 @@ final class IdentityStore {
         if let firstError { throw firstError }
     }
 
+#if DEBUG
+    func createLegacyIdentityForTesting() throws -> ClientIdentity {
+        let privateKey = try createPrivateKey()
+        let certificate = try createCertificate(privateKey: privateKey, commonName: "Android TV Remote")
+        try saveCertificate(certificate)
+        guard let identity = makeIdentity(certificate: certificate, privateKey: privateKey) else { throw IdentityStoreError.identityCreation }
+        return ClientIdentity(identity: identity, certificate: certificate, publicKey: SecKeyCopyPublicKey(privateKey)!,
+            fingerprint: CertificateFingerprint.sha256(certificate), privateKey: privateKey, clientName: clientName(for: certificate))
+    }
+#endif
+
     private func createIdentity() throws -> ClientIdentity {
         let privateKey = try createPrivateKey()
         do {
-            let certificate = try createCertificate(privateKey: privateKey)
+            let certificate = try createCertificate(privateKey: privateKey, commonName: ClientNameStore.generateUniqueName())
             try saveCertificate(certificate)
             guard let identity = makeIdentity(certificate: certificate, privateKey: privateKey) else {
                 throw IdentityStoreError.identityCreation
@@ -191,7 +266,8 @@ final class IdentityStore {
                 identity: identity,
                 certificate: certificate,
                 publicKey: SecKeyCopyPublicKey(privateKey)!,
-                fingerprint: CertificateFingerprint.sha256(certificate)
+                fingerprint: CertificateFingerprint.sha256(certificate),
+                privateKey: privateKey, clientName: clientName(for: certificate)
             )
         } catch {
             try? deleteAll()
@@ -222,10 +298,10 @@ final class IdentityStore {
         return key
     }
 
-    private func createCertificate(privateKey: SecKey) throws -> SecCertificate {
+    private func createCertificate(privateKey: SecKey, commonName: String) throws -> SecCertificate {
         let signingKey = try Certificate.PrivateKey(privateKey)
         let name = try DistinguishedName {
-            CommonName("Android TV Remote")
+            CommonName(commonName)
         }
 
         var serial = [UInt8](repeating: 0, count: 16)

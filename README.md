@@ -55,6 +55,10 @@ iOS device builds require Apple approval for the **Multicast Networking** capabi
 
 If your TV does not appear, enter its IP address from the TV's network settings.
 
+Android first reconnects to the last successful IP. If that address is unreachable and the TV's discovery name was saved, it resolves that specific TV again and verifies the original TV certificate before saving the new IP. It does not browse for other TVs. TVs paired only by manual IP without a saved discovery name still need their current IP entered manually. If the same TV no longer accepts the phone's certificate, Connect opens the pairing-code screen again.
+
+New Android and iOS pairings use a unique certificate CN and matching client name, retained across reconnects. Existing working pairings are preserved. When the original TV rejects an older fixed-name certificate, the app stages a unique-CN replacement using the same private key and asks for the TV code again; it saves the replacement only after pairing and the authenticated remote connection succeed. Certificate import and export are deferred.
+
 The current iOS target is still experimental: it can discover nearby Google TVs, but pairing a newly discovered TV is not complete. Both Android and iOS include hold-to-talk voice search for a connected TV. TV text input is not implemented yet. Both phone apps are portrait-only.
 
 ## Build from source

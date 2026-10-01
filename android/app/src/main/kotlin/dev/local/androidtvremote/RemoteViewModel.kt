@@ -128,7 +128,10 @@ class RemoteViewModel(application: Application) : AndroidViewModel(application) 
         launchAction { controller.disconnect() }
     }
 
-    fun forget() = launchAction { controller.forget() }
+    fun forget() {
+        connectionJob?.cancel()
+        launchAction { controller.forget() }
+    }
 
     fun onBackground() {
         connectionJob?.cancel()

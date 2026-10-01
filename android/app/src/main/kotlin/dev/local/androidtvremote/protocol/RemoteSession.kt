@@ -2,11 +2,13 @@ package dev.local.androidtvremote.protocol
 
 import dev.local.androidtvremote.RemoteCommand
 import dev.local.androidtvremote.RemoteKeyAction
+import dev.local.androidtvremote.security.ClientIdentity
 import java.io.EOFException
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.SocketTimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.net.ssl.SSLException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
@@ -313,8 +315,9 @@ class RemoteSession private constructor(
             tlsClient: TlsClient,
             scope: CoroutineScope,
             onLost: (Throwable?) -> Unit,
+            identity: ClientIdentity? = null,
         ): RemoteSession {
-            val connection = tlsClient.connectRemote(host, expectedFingerprint)
+            val connection = tlsClient.connectRemote(host, expectedFingerprint, identity)
             val session = RemoteSession(connection, scope, onLost, DelimitedFrameReader())
             return try {
                 session.handshake()
@@ -322,11 +325,31 @@ class RemoteSession private constructor(
                 session
             } catch (error: Throwable) {
                 session.closeNow()
-                throw error
+                throw remoteHandshakeFailure(error, expectedFingerprint, connection.peerFingerprint)
             }
         }
     }
 }
+
+internal fun remoteHandshakeFailure(
+    error: Throwable,
+    expectedFingerprint: String?,
+    peerFingerprint: String,
+): Throwable {
+    if (expectedFingerprint == null || expectedFingerprint != peerFingerprint || error is CancellationException) {
+        return error
+    }
+    // Some TLS providers deliver the peer's client-certificate alert on the
+    // first remote read rather than from startHandshake(). The peer is already pinned.
+    val rejected = generateSequence(error) { it.cause }.take(6)
+        .filterIsInstance<SSLException>()
+        .any { CLIENT_CERTIFICATE_ALERT.containsMatchIn(it.message.orEmpty()) }
+    return if (rejected) ClientIdentityRejectedException(error) else error
+}
+
+private val CLIENT_CERTIFICATE_ALERT = Regex(
+    """(?i)(?:\b(?:SSLV3|TLSV1(?:_[0-9]+)?)_ALERT_|\b(?:sslv3|tlsv1(?:\.[0-9]+)?)\s+alert\s+|\bReceived\s+fatal\s+alert:\s*)(?:certificate(?:_|\s+)unknown|bad(?:_|\s+)certificate|unknown(?:_|\s+)ca)(?![a-z0-9_])""",
+)
 
 internal class VoiceSessionGate {
     private var waiting = false

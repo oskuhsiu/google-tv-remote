@@ -252,6 +252,18 @@ final class AppModel: ObservableObject {
         session.connect(to: rememberedRecord)
     }
 
+    func connectRemembered(host: String) {
+        guard sceneIsActive, canConnectRemembered, let record = rememberedRecord else { return }
+        let host = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !host.isEmpty, !host.contains(where: { $0.isWhitespace }) else { return }
+        disconnectedByUser = false
+        sessionEventsAllowed = true
+        cancelReconnect()
+        discovery.stop()
+        state = .connecting(record.replacingHost(host).device)
+        session.connect(to: record.replacingHost(host))
+    }
+
     func retryDiscovery() {
         guard sceneIsActive, rememberedRecord == nil else { return }
         discoveryMessage = nil
@@ -302,7 +314,8 @@ final class AppModel: ObservableObject {
     }
 
     func cancelPairing() {
-        guard sceneIsActive, rememberedRecord == nil else { return }
+        guard sceneIsActive else { return }
+        if rememberedRecord != nil { disconnect(); return }
         session.disconnect()
         state = .discovering([])
         discovery.start()
@@ -469,18 +482,24 @@ final class AppModel: ObservableObject {
         case .pairingCodeRequested(let device):
             state = .needsPairing(device)
         case .pairingCompleted(let incomingRecord):
+            cancelReconnect()
             var record = incomingRecord
-            if let current = rememberedRecord, current.hasSameTrust(as: record) {
+            if let current = rememberedRecord,
+               current.persistentDeviceID == record.persistentDeviceID,
+               current.pairingPeerFingerprint == record.pairingPeerFingerprint,
+               current.remotePeerFingerprint == record.remotePeerFingerprint {
                 record.networkWake = current.networkWake
             }
             do {
-                try store.save(record)
+                try session.commitPairing { try store.save(record) }
                 rememberedRecord = record
                 state = .connected(record.device)
             } catch {
                 sessionEventsAllowed = false
                 session.disconnect()
-                diagnosticMessage = "The paired TV could not be saved. Forget it on the TV and try again."
+                diagnosticMessage = rememberedRecord == nil
+                    ? "The paired TV could not be saved. Forget it on the TV and try again."
+                    : "The repaired pairing could not be saved. Your previous pairing is retained. Try again."
                 state = .failed(record.device, reason: .unknown, recoverable: true)
             }
         case .connected(let device):
@@ -500,8 +519,16 @@ final class AppModel: ObservableObject {
             } else if reason == .pairingRequired, let device {
                 cancelReconnect()
                 backgroundKeepAlive.stop()
-                sessionEventsAllowed = sceneIsActive
-                state = .needsPairing(device)
+                guard sceneIsActive else {
+                    sessionEventsAllowed = false
+                    session.disconnect()
+                    state = .disconnected(rememberedRecord?.device)
+                    diagnosticMessage = "The TV needs pairing again. Open the app to enter its code."
+                    return
+                }
+                sessionEventsAllowed = true
+                state = .pairing(device)
+                if let record = rememberedRecord { session.rePair(to: record.replacingHost(device.host)) }
             } else if shouldReconnect(after: reason),
                       let record = rememberedRecord,
                       device?.id == record.persistentDeviceID {
@@ -524,6 +551,10 @@ final class AppModel: ObservableObject {
             return "The TV rejected pairing. Select it and try again."
         case .pairingTimeout:
             return "Pairing timed out. Select the TV and try again."
+        case .tvNotFound:
+            return "The saved TV could not be reached. Enter its current IP address to retry."
+        case .trustChanged:
+            return "The TV identity has changed. Check the TV before forgetting or pairing again."
         default:
             return nil
         }

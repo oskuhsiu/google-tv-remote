@@ -50,8 +50,10 @@ class LastTvStore(context: Context) {
             .put("remotePeerFingerprint", record.remotePeerFingerprint)
         record.bonjourLocatorKey?.let { json.put("bonjourLocatorKey", it) }
         record.macAddress?.let { json.put("macAddress", it) }
-        check(preferences.edit().putString(KEY_RECORD, json.toString()).commit()) {
-            "Unable to persist the remembered TV"
+        persistRecordWithRollback(json.toString(), preferences.getString(KEY_RECORD, null)) { raw ->
+            val editor = preferences.edit()
+            if (raw == null) editor.remove(KEY_RECORD) else editor.putString(KEY_RECORD, raw)
+            editor.commit()
         }
     }
 

@@ -5,6 +5,7 @@ import android.provider.Settings
 import dev.local.androidtvremote.audio.AudioRecordVoiceCapture
 import dev.local.androidtvremote.audio.VoiceAudioCapture
 import dev.local.androidtvremote.discovery.TvDiscovery
+import dev.local.androidtvremote.discovery.RememberedTvResolver
 import dev.local.androidtvremote.protocol.ClientIdentityRejectedException
 import dev.local.androidtvremote.protocol.PairingClient
 import dev.local.androidtvremote.protocol.PairingCode
@@ -13,6 +14,7 @@ import dev.local.androidtvremote.protocol.PairingSession
 import dev.local.androidtvremote.protocol.RemoteMessageFactory
 import dev.local.androidtvremote.protocol.RemoteSession
 import dev.local.androidtvremote.protocol.TlsClient
+import dev.local.androidtvremote.protocol.TcpConnectException
 import dev.local.androidtvremote.protocol.TrustChangedException
 import dev.local.androidtvremote.security.ClientIdentity
 import dev.local.androidtvremote.security.IdentityStore
@@ -63,6 +65,8 @@ class AndroidRemoteController(
     },
     private val wolSender: WolPacketSender = DefaultWolSender(),
     private val macDiscoverer: MacAddressDiscoverer = DefaultMacDiscoverer(),
+    private val resolveRememberedTv: suspend (String) -> TvCandidate? =
+        RememberedTvResolver(context.applicationContext)::resolve,
 ) : RemoteController {
     private val androidId = Settings.Secure
         .getString(context.contentResolver, Settings.Secure.ANDROID_ID)
@@ -122,7 +126,7 @@ class AndroidRemoteController(
                     isForeground = true
                     tvDiscovery.stop()
                     closeTransportsLocked()
-                    connectKnownLocked(checkNotNull(record).asCandidate(), record)
+                    connectKnownLocked(checkNotNull(record).asCandidate(), record, recoverAddress = true)
                 }
                 ForegroundAction.START_DISCOVERY -> {
                     isForeground = true
@@ -161,7 +165,7 @@ class AndroidRemoteController(
                 mutableState.value = RemoteState.Idle
                 return
             }
-            connectKnownLocked(record.asCandidate(), record)
+            connectKnownLocked(record.asCandidate(), record, recoverAddress = true)
         }
     }
 
@@ -266,10 +270,10 @@ class AndroidRemoteController(
         val record = lifecycleMutex.withLock {
             rememberedRecord ?: throw RemoteOperationException(RemoteError.TV_NOT_FOUND)
         }
-        val candidate = record.asCandidate()
+        var candidate = record.asCandidate()
 
         // 1. Direct-first attempt (port 6466) without sending WOL
-        val directConnected = tryDirectConnect(candidate, record)
+        val directConnected = tryDirectConnect(candidate, record, recoverAddress = true) { candidate = it }
         if (directConnected) {
             return
         }
@@ -361,17 +365,36 @@ class AndroidRemoteController(
     private suspend fun establishSessionLocked(
         candidate: TvCandidate,
         record: LastTvRecord,
+        recoverAddress: Boolean = false,
+        onAddressResolved: (TvCandidate) -> Unit = {},
     ): RemoteSession {
         closeTransportsLocked()
         mutableState.value = RemoteState.Connecting(candidate)
-        val opened = openRemoteLocked(candidate.host, record.remotePeerFingerprint)
+        val connection = openRememberedTvSession(
+            candidate = candidate,
+            expectedFingerprint = record.remotePeerFingerprint,
+            locatorKey = record.bonjourLocatorKey.takeIf { recoverAddress },
+            resolve = resolveRememberedTv,
+            open = { target, fingerprint ->
+                mutableState.value = RemoteState.Connecting(target)
+                openRemoteLocked(target.host, fingerprint)
+            },
+            onAddressResolved = onAddressResolved,
+        )
+        val opened = connection.session
+        val connectedCandidate = connection.candidate
         val updated = record.copy(
-            lastHost = candidate.host,
-            bonjourLocatorKey = candidate.locatorKey.takeIf { candidate.source == TvSource.DISCOVERY }
+            lastHost = connectedCandidate.host,
+            bonjourLocatorKey = connectedCandidate.locatorKey.takeIf { connectedCandidate.source == TvSource.DISCOVERY }
                 ?: record.bonjourLocatorKey,
             lastConnectedAt = System.currentTimeMillis(),
         )
-        lastTvStore.save(updated)
+        try {
+            lastTvStore.save(updated)
+        } catch (error: Throwable) {
+            withContext(NonCancellable) { opened.close() }
+            throw error
+        }
         rememberedRecord = updated
         mutableRememberedMacAddress.value = updated.macAddress
         remoteSession = opened
@@ -383,12 +406,14 @@ class AndroidRemoteController(
     private suspend fun tryDirectConnect(
         candidate: TvCandidate,
         record: LastTvRecord,
+        recoverAddress: Boolean = false,
+        onAddressResolved: (TvCandidate) -> Unit = {},
     ): Boolean = lifecycleMutex.withLock {
         val current = rememberedRecord ?: return@withLock false
         if (current.device.id != record.device.id) return@withLock false
         if (mutableState.value is RemoteState.Connected) return@withLock true
         try {
-            establishSessionLocked(candidate, current)
+            establishSessionLocked(candidate, current, recoverAddress, onAddressResolved)
             true
         } catch (error: CancellationException) {
             activeSessionToken = null
@@ -571,14 +596,19 @@ class AndroidRemoteController(
         }
     }
 
-    private suspend fun connectKnownLocked(candidate: TvCandidate, record: LastTvRecord) {
+    private suspend fun connectKnownLocked(
+        candidate: TvCandidate,
+        record: LastTvRecord,
+        recoverAddress: Boolean = false,
+    ) {
+        var currentCandidate = candidate
         try {
-            establishSessionLocked(candidate, record)
+            establishSessionLocked(candidate, record, recoverAddress) { currentCandidate = it }
         } catch (error: CancellationException) {
             activeSessionToken = null
             throw error
         } catch (error: ClientIdentityRejectedException) {
-            beginPairingLocked(candidate, previousRecord = record)
+            beginPairingLocked(currentCandidate, previousRecord = record, repairRejectedIdentity = true)
         } catch (error: TrustChangedException) {
             mutableState.value = RemoteState.Failed(record.device, RemoteError.TRUST_CHANGED, recoverable = false)
             startDiscoveryIfUnpairedLocked()
@@ -591,11 +621,15 @@ class AndroidRemoteController(
     private suspend fun beginPairingLocked(
         candidate: TvCandidate,
         previousRecord: LastTvRecord?,
+        repairRejectedIdentity: Boolean = false,
     ) {
         pairedDraft = null
         mutableState.value = RemoteState.Connecting(candidate)
-        val identity = withContext(Dispatchers.IO) { identityStore.loadOrCreate() }
-        val clientName = deviceClientName(androidId ?: identity.fingerprint)
+        val identity = withContext(Dispatchers.IO) {
+            val existing = identityStore.loadOrCreate()
+            if (repairRejectedIdentity) identityStore.prepareUniqueIdentity(existing) else existing
+        }
+        val clientName = identity.clientName ?: deviceClientName(androidId ?: identity.fingerprint)
         try {
             val session = withContext(Dispatchers.IO) {
                 pairingClient.start(
@@ -639,6 +673,7 @@ class AndroidRemoteController(
     private suspend fun openRemoteLocked(
         host: String,
         expectedFingerprint: String?,
+        identity: ClientIdentity? = null,
     ): RemoteSession {
         val token = Any()
         activeSessionToken = token
@@ -667,16 +702,20 @@ class AndroidRemoteController(
                     }
                 }
             },
+            identity = identity,
         )
     }
 
     private suspend fun completePairedDraftLocked(draft: PairedDraft) {
         mutableState.value = RemoteState.Connecting(draft.candidate)
+        var openedForCleanup: RemoteSession? = null
         try {
             val opened = openRemoteWithRetryLocked(
                 host = draft.candidate.host,
                 expectedFingerprint = draft.previousRecord?.remotePeerFingerprint,
+                identity = draft.identity,
             )
+            openedForCleanup = opened
             val isSameTv = draft.previousRecord?.let {
                 it.remotePeerFingerprint == opened.peerFingerprint || it.device.id == opened.peerFingerprint
             } == true
@@ -705,17 +744,35 @@ class AndroidRemoteController(
                 remotePeerFingerprint = opened.peerFingerprint,
                 macAddress = discoveredMac,
             )
-            lastTvStore.save(record)
-            rememberedRecord = record
-            mutableRememberedMacAddress.value = discoveredMac
-            remoteSession = opened
-            pairedDraft = null
-            mutableState.value = RemoteState.Connected(device)
-            mutableVoiceState.value = voiceStateFor(opened)
+            // Once the authenticated handshake succeeds, keep persistence and
+            // publication together even if Cancel arrives during a Keystore write.
+            withContext(NonCancellable) {
+                withContext(Dispatchers.IO) {
+                    val previousIdentity = identityStore.load()
+                    val certificateChanged = previousIdentity?.fingerprint != draft.identity.fingerprint
+                    if (certificateChanged) identityStore.commit(draft.identity)
+                    try {
+                        lastTvStore.save(record)
+                    } catch (error: Throwable) {
+                        if (certificateChanged && previousIdentity != null) identityStore.commit(previousIdentity)
+                        throw error
+                    }
+                }
+                rememberedRecord = record
+                mutableRememberedMacAddress.value = discoveredMac
+                remoteSession = opened
+                openedForCleanup = null
+                pairedDraft = null
+                mutableState.value = RemoteState.Connected(device)
+                mutableVoiceState.value = voiceStateFor(opened)
+            }
         } catch (error: CancellationException) {
             activeSessionToken = null
+            withContext(NonCancellable) { openedForCleanup?.close() }
             throw error
         } catch (error: Throwable) {
+            activeSessionToken = null
+            withContext(NonCancellable) { openedForCleanup?.close() }
             val mapped = mapConnectionFailure(error)
             mutableState.value = RemoteState.Failed(
                 draft.previousRecord?.device,
@@ -741,12 +798,13 @@ class AndroidRemoteController(
     private suspend fun openRemoteWithRetryLocked(
         host: String,
         expectedFingerprint: String?,
+        identity: ClientIdentity,
     ): RemoteSession {
         var lastFailure: Throwable? = null
         for (attempt in 1..3) {
             delay(checkNotNull(RetryPolicy.delayMillis(attempt)))
             try {
-                return openRemoteLocked(host, expectedFingerprint)
+                return openRemoteLocked(host, expectedFingerprint, identity)
             } catch (error: CancellationException) {
                 activeSessionToken = null
                 throw error
@@ -805,6 +863,7 @@ class AndroidRemoteController(
     }
 
     private fun mapConnectionFailure(error: Throwable): RemoteError = when (error) {
+        is TcpConnectException -> mapConnectionFailure(checkNotNull(error.cause))
         is TrustChangedException -> RemoteError.TRUST_CHANGED
         is UnknownHostException -> RemoteError.TV_NOT_FOUND
         is ConnectException, is NoRouteToHostException, is SocketTimeoutException, is SocketException ->

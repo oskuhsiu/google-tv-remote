@@ -327,6 +327,8 @@ protocol RemoteSessionControlling: AnyObject {
     var onVoiceStateChanged: ((VoiceState) -> Void)? { get set }
     var onVoiceError: ((RemoteError) -> Void)? { get set }
     func startPairing(with device: RemoteDevice)
+    func rePair(to record: LastTvRecord)
+    func commitPairing(persistMetadata: () throws -> Void) throws
     func submitPairingCode(_ code: String)
     func connect(to record: LastTvRecord)
     func disconnect()
@@ -362,4 +364,9 @@ protocol LastTvStoring: AnyObject {
     func load() throws -> LastTvRecord?
     func save(_ record: LastTvRecord) throws
     func clear()
+}
+
+extension RemoteSessionControlling {
+    func rePair(to record: LastTvRecord) { startPairing(with: record.device) }
+    func commitPairing(persistMetadata: () throws -> Void) throws { try persistMetadata() }
 }

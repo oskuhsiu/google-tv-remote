@@ -21,7 +21,7 @@ class PairingClient(
         identity: ClientIdentity,
         expectedPeerFingerprint: String?,
     ): PairingSession {
-        val connection = tlsClient.connectPairing(host, expectedPeerFingerprint)
+        val connection = tlsClient.connectPairing(host, expectedPeerFingerprint, identity)
         val session = PairingSession(connection, identity, frameReader)
         return try {
             session.negotiate(clientName)

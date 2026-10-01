@@ -193,6 +193,27 @@ final class NetworkWakeModelTests: XCTestCase {
         XCTAssertNil(fixture.model.rememberedRecord?.networkWake)
     }
 
+    func testClientCertificateRepairKeepsLatestMACAndTrustedTVMetadata() {
+        let fixture = WakeModelFixture()
+        fixture.model.enterForeground()
+        XCTAssertTrue(fixture.model.saveNetworkWakeMAC("A4:77:33:12:AB:CD"))
+        let original = fixture.model.rememberedRecord!
+        let repaired = LastTvRecord(
+            persistentDeviceID: original.persistentDeviceID, name: original.name,
+            clientIdentityFingerprint: "repaired-client-certificate",
+            pairingPeerFingerprint: original.pairingPeerFingerprint,
+            remotePeerFingerprint: original.remotePeerFingerprint, lastHost: "192.0.2.30",
+            bonjourLocator: original.bonjourLocator, source: original.source,
+            networkWake: nil
+        )
+        fixture.session.onEvent?(.pairingCompleted(repaired))
+        XCTAssertEqual(fixture.model.rememberedRecord?.networkWake?.macAddress, "A4:77:33:12:AB:CD")
+        XCTAssertEqual(fixture.model.rememberedRecord?.clientIdentityFingerprint, repaired.clientIdentityFingerprint)
+        XCTAssertEqual(fixture.model.rememberedRecord?.name, original.name)
+        XCTAssertEqual(fixture.model.rememberedRecord?.bonjourLocator, original.bonjourLocator)
+        XCTAssertEqual(fixture.model.rememberedRecord?.source, original.source)
+    }
+
     func testDifferentTrustedTVDoesNotInheritWakeSettings() {
         let fixture = WakeModelFixture()
         fixture.model.enterForeground()
