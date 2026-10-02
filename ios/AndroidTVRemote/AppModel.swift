@@ -11,8 +11,6 @@ final class AppModel: ObservableObject {
     @Published private(set) var keepAliveStatus: KeepAliveStatus
     @Published private(set) var voiceState: VoiceState = .unavailable
     @Published private(set) var voiceMessage: String?
-    @Published private(set) var networkWakeMessage: String?
-    @Published private(set) var isTestingNetworkWake = false
 
     private let discovery: DiscoveryControlling
     private let session: RemoteSessionControlling
@@ -21,9 +19,6 @@ final class AppModel: ObservableObject {
     private let backgroundKeepAlive: BackgroundKeepAliveControlling
     private let persistKeepReady: (Bool) -> Void
     private let retrySleep: (TimeInterval) async throws -> Void
-    private let wolSender: WolSending
-    private var networkWakeTask: Task<Void, Never>?
-    private var networkWakeGeneration = 0
     private var sceneIsActive = false
     private var sessionEventsAllowed = false
     private var disconnectedByUser = false
@@ -68,7 +63,6 @@ final class AppModel: ObservableObject {
         session: RemoteSessionControlling,
         identity: ClientIdentityValidating,
         store: LastTvStoring,
-        wolSender: WolSending = LocalNetworkWolSender(),
         backgroundKeepAlive: BackgroundKeepAliveControlling? = nil,
         initialKeepReadyEnabled: Bool = false,
         persistKeepReady: @escaping (Bool) -> Void = { _ in },
@@ -80,7 +74,6 @@ final class AppModel: ObservableObject {
         self.session = session
         self.identity = identity
         self.store = store
-        self.wolSender = wolSender
         let backgroundKeepAlive = backgroundKeepAlive ?? DisabledBackgroundKeepAliveController()
         self.backgroundKeepAlive = backgroundKeepAlive
         self.keepReadyEnabled = initialKeepReadyEnabled && backgroundKeepAlive.isAvailable
@@ -162,7 +155,6 @@ final class AppModel: ObservableObject {
 
     func enterBackground() {
         guard sceneIsActive else { return }
-        cancelNetworkWakeTest()
         stopVoice()
         sceneIsActive = false
         discovery.stop()
@@ -210,8 +202,6 @@ final class AppModel: ObservableObject {
     }
 
     func forget() {
-        cancelNetworkWakeTest()
-        networkWakeMessage = nil
         stopVoice()
         sessionEventsAllowed = false
         cancelReconnect()
@@ -347,81 +337,6 @@ final class AppModel: ObservableObject {
         }
     }
 
-    @discardableResult
-    func saveNetworkWakeMAC(_ input: String) -> Bool {
-        guard canConnectRemembered, var record = rememberedRecord else { return false }
-        guard let settings = NetworkWakeSettings(macAddress: input) else {
-            networkWakeMessage = NSLocalizedString("Enter a valid device MAC address, such as A4:77:33:12:AB:CD.", comment: "Invalid wake MAC")
-            return false
-        }
-        cancelNetworkWakeTest()
-        record.networkWake = settings
-        return persistNetworkWake(record, message: "MAC saved. Wake support is unverified.")
-    }
-
-    @discardableResult
-    func clearNetworkWakeMAC() -> Bool {
-        guard canConnectRemembered, var record = rememberedRecord else { return false }
-        cancelNetworkWakeTest()
-        record.networkWake = nil
-        return persistNetworkWake(record, message: "MAC address cleared.")
-    }
-
-    private func persistNetworkWake(_ record: LastTvRecord, message: String) -> Bool {
-        do {
-            try store.save(record)
-            rememberedRecord = record
-            networkWakeMessage = NSLocalizedString(message, comment: "Wake settings feedback")
-            return true
-        } catch {
-            networkWakeMessage = NSLocalizedString("Could not save the MAC address. Try again.", comment: "Wake storage error")
-            return false
-        }
-    }
-
-    @discardableResult
-    func testNetworkWake() -> Task<Void, Never>? {
-        guard sceneIsActive, canConnectRemembered, !isTestingNetworkWake,
-              let record = rememberedRecord, let settings = record.networkWake else { return nil }
-        networkWakeMessage = nil
-        isTestingNetworkWake = true
-        networkWakeGeneration += 1
-        let generation = networkWakeGeneration
-        networkWakeTask = Task { [weak self, wolSender] in
-            defer {
-                if let self, self.networkWakeGeneration == generation {
-                    self.isTestingNetworkWake = false
-                    self.networkWakeTask = nil
-                }
-            }
-            let message: String
-            do {
-                try await wolSender.send(macAddress: settings.macAddress)
-                message = "Wake packet sent. This does not confirm that the TV woke."
-            } catch is CancellationError {
-                return
-            } catch WolSendError.localNetworkUnavailable {
-                message = "Connect your iPhone to the same local Wi-Fi or Ethernet network as the TV. VPN and cellular connections cannot send this test."
-            } catch {
-                message = "Could not send the wake packet. Check Local Network permission and your Wi-Fi connection, then try again."
-            }
-            guard let self, !Task.isCancelled, self.networkWakeGeneration == generation,
-                  let current = self.rememberedRecord, current.hasSameTrust(as: record),
-                  current.networkWake == settings else { return }
-            self.isTestingNetworkWake = false
-            self.networkWakeTask = nil
-            self.networkWakeMessage = NSLocalizedString(message, comment: "Wake packet test result")
-        }
-        return networkWakeTask
-    }
-
-    func cancelNetworkWakeTest() {
-        networkWakeGeneration += 1
-        networkWakeTask?.cancel()
-        networkWakeTask = nil
-        isTestingNetworkWake = false
-    }
-
     func send(_ command: RemoteCommand, action: RemoteKeyAction = .short) {
         guard case .connected = state else { return }
         session.send(command: command, action: action)
@@ -481,15 +396,8 @@ final class AppModel: ObservableObject {
         switch event {
         case .pairingCodeRequested(let device):
             state = .needsPairing(device)
-        case .pairingCompleted(let incomingRecord):
+        case .pairingCompleted(let record):
             cancelReconnect()
-            var record = incomingRecord
-            if let current = rememberedRecord,
-               current.persistentDeviceID == record.persistentDeviceID,
-               current.pairingPeerFingerprint == record.pairingPeerFingerprint,
-               current.remotePeerFingerprint == record.remotePeerFingerprint {
-                record.networkWake = current.networkWake
-            }
             do {
                 try session.commitPairing { try store.save(record) }
                 rememberedRecord = record

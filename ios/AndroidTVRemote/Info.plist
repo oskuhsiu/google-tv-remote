@@ -34,7 +34,7 @@
 		<string>_androidtvremote2._tcp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Find, connect to, and send network wake packets to your TV on the local network.</string>
+	<string>Find and connect to your TV on the local network.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Send your voice directly to the connected TV while you hold the Voice button.</string>
 	<key>UIBackgroundModes</key>

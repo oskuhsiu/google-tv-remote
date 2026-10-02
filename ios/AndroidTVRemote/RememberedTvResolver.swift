@@ -55,6 +55,6 @@ extension LastTvRecord {
         LastTvRecord(persistentDeviceID: persistentDeviceID, name: name, clientIdentityFingerprint: clientIdentityFingerprint,
             pairingPeerFingerprint: pairingPeerFingerprint, remotePeerFingerprint: remotePeerFingerprint,
             lastHost: host, bonjourLocator: bonjourLocator, source: source,
-            lastConnectedAt: connectedAt ?? lastConnectedAt, networkWake: networkWake)
+            lastConnectedAt: connectedAt ?? lastConnectedAt)
     }
 }

@@ -301,8 +301,7 @@ final class AndroidTVRemoteAdapter: RemoteSessionControlling {
                 lastHost: device.host,
                 bonjourLocator: device.locator,
                 source: device.source,
-                lastConnectedAt: Date(),
-                networkWake: pairingExpectedRecord?.networkWake
+                lastConnectedAt: Date()
             )
             pairedIdentityDraft = identity
             pairingExpectedRecord = nil

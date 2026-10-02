@@ -139,7 +139,6 @@ struct LastTvRecord: Codable, Equatable, Sendable {
     let bonjourLocator: BonjourLocator?
     let source: TvSource
     let lastConnectedAt: Date
-    var networkWake: NetworkWakeSettings?
 
     init(
         persistentDeviceID: String,
@@ -150,8 +149,7 @@ struct LastTvRecord: Codable, Equatable, Sendable {
         lastHost: String,
         bonjourLocator: BonjourLocator?,
         source: TvSource = .manual,
-        lastConnectedAt: Date = .distantPast,
-        networkWake: NetworkWakeSettings? = nil
+        lastConnectedAt: Date = .distantPast
     ) {
         self.persistentDeviceID = persistentDeviceID
         self.name = name
@@ -162,12 +160,11 @@ struct LastTvRecord: Codable, Equatable, Sendable {
         self.bonjourLocator = bonjourLocator
         self.source = source
         self.lastConnectedAt = lastConnectedAt
-        self.networkWake = networkWake
     }
 
     private enum CodingKeys: String, CodingKey {
         case persistentDeviceID, name, clientIdentityFingerprint, pairingPeerFingerprint
-        case remotePeerFingerprint, lastHost, bonjourLocator, source, lastConnectedAt, networkWake
+        case remotePeerFingerprint, lastHost, bonjourLocator, source, lastConnectedAt
     }
 
     init(from decoder: Decoder) throws {
@@ -181,8 +178,6 @@ struct LastTvRecord: Codable, Equatable, Sendable {
         bonjourLocator = try values.decodeIfPresent(BonjourLocator.self, forKey: .bonjourLocator)
         source = try values.decodeIfPresent(TvSource.self, forKey: .source) ?? .manual
         lastConnectedAt = try values.decodeIfPresent(Date.self, forKey: .lastConnectedAt) ?? .distantPast
-        // Optional wake metadata must never invalidate a valid pairing trust tuple.
-        networkWake = try? values.decode(NetworkWakeSettings.self, forKey: .networkWake)
     }
 
     func hasSameTrust(as other: LastTvRecord) -> Bool {

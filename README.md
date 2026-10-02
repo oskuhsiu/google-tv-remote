@@ -36,7 +36,7 @@ Widget commands require an already paired and reachable TV session; the Widget d
 
 ### Network Wake (WOL)
 
-Both phone apps provide **Network Wake** settings and a guide for finding the TV's MAC address. iOS uses manual MAC entry; Android also attempts a best-effort lookup after pairing.
+The Android app provides **Network Wake** settings and a guide for finding the TV's MAC address, with a best-effort lookup after pairing.
 
 1. Turn on the TV and open its **Settings** or **Help** menu with the TV remote.
 2. Find the MAC address. Google TV Streamer and Chromecast use **Settings > System > About > Status**. TCL Google TV commonly shows it under **Network & Internet > the connected network**. Sony models may show it under **Help > Status & Diagnostics > Network status**. Menus vary by model.
@@ -44,7 +44,7 @@ Both phone apps provide **Network Wake** settings and a guide for finding the TV
 
 Use the settings' explicit wake-packet test after putting the TV in standby. Saving a MAC or successfully sending a packet does not confirm that the TV supports network wake or has woken up. Support varies by model and by Wi-Fi versus Ethernet.
 
-iOS device builds require Apple approval for the **Multicast Networking** capability and a provisioning profile that authorizes `com.apple.developer.networking.multicast`. The app declares this entitlement for WOL broadcasts. Allow **Local Network** access when prompted. Simulator UI checks do not verify physical-TV wake behavior or device provisioning.
+iOS WOL has been removed because physical-device broadcasts require Apple's **Multicast Networking** approval. The iOS app continues to use its paired remote session for normal Power commands and does not require this capability.
 
 ## How to use on Android
 
