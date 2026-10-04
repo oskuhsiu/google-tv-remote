@@ -39,7 +39,7 @@ enum RemoteCommand: String, CaseIterable, Codable, Sendable {
         case .back: 4
         case .home: 3
         case .menu: 82
-        case .power: 26
+        case .power: 223 // KEYCODE_SLEEP: iOS has no WOL, so never request a full power-off.
         case .volumeUp: 24
         case .volumeDown: 25
         case .mute: 164
