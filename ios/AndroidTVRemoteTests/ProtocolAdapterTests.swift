@@ -91,6 +91,15 @@ final class ProtocolAdapterTests: XCTestCase {
         }
     }
 
+    func testPowerCommandUsesSleepKeyInsteadOfPowerToggle() throws {
+        let payload = try RemotePayloadFactory.key(command: .power, action: .short)
+        let message = try Remote_RemoteMessage(serializedBytes: payload)
+
+        XCTAssertEqual(message.remoteKeyInject.keyCode, .keycodeSleep)
+        XCTAssertNotEqual(message.remoteKeyInject.keyCode, .keycodePower)
+        XCTAssertEqual(message.remoteKeyInject.keyCode.rawValue, 223)
+    }
+
     func testOnlySelectSupportsProtocolLongDirections() throws {
         let start = try RemotePayloadFactory.key(command: .select, action: .startLong)
         let end = try RemotePayloadFactory.key(command: .select, action: .endLong)
