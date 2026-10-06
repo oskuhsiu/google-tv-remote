@@ -106,15 +106,37 @@ jobs:
           import os
           import pathlib
           import plistlib
+          import struct
           import subprocess
           import zipfile
+
+          def device_minimum_os(data):
+              # Read the actual Mach-O platform instead of requiring optional
+              # CFBundleSupportedPlatforms metadata on extension bundles.
+              magic, cpu, _, _, commands, command_bytes, _, _ = struct.unpack_from('<8I', data)
+              assert magic == 0xFEEDFACF and cpu == 0x0100000C, 'Expected arm64 Mach-O'
+              offset = 32
+              assert offset + command_bytes <= len(data), 'Truncated Mach-O commands'
+              for _ in range(commands):
+                  command, size = struct.unpack_from('<II', data, offset)
+                  assert size >= 8 and offset + size <= 32 + command_bytes
+                  if command == 0x32:  # LC_BUILD_VERSION
+                      assert size >= 24
+                      platform, minimum = struct.unpack_from('<II', data, offset + 8)
+                      assert platform == 2, 'Expected iOS device, not Simulator'
+                      return f'{minimum >> 16}.{(minimum >> 8) & 255}.{minimum & 255}'
+                  offset += size
+              raise AssertionError('Missing Mach-O build platform')
 
           ipa = pathlib.Path(os.environ['IPA_PATH'])
           with zipfile.ZipFile(ipa) as archive:
               info = plistlib.loads(archive.read('Payload/AndroidTVRemote.app/Info.plist'))
               widget = plistlib.loads(archive.read('Payload/AndroidTVRemote.app/PlugIns/AndroidTVRemoteControls.appex/Info.plist'))
               for bundle in (info, widget):
-                  assert bundle['CFBundleSupportedPlatforms'] == ['iPhoneOS'], bundle
+                  platforms = bundle.get('CFBundleSupportedPlatforms')
+                  assert platforms is None or platforms == ['iPhoneOS'], bundle
+              app_minimum_os = device_minimum_os(archive.read('Payload/AndroidTVRemote.app/AndroidTVRemote'))
+              widget_minimum_os = device_minimum_os(archive.read('Payload/AndroidTVRemote.app/PlugIns/AndroidTVRemoteControls.appex/AndroidTVRemoteControls'))
               assert info['CFBundleShortVersionString'] == widget['CFBundleShortVersionString']
               assert info['CFBundleVersion'] == widget['CFBundleVersion']
           digest = hashlib.sha256(ipa.read_bytes()).hexdigest()
@@ -130,7 +152,8 @@ jobs:
               'bundle_id': info['CFBundleIdentifier'],
               'version': info['CFBundleShortVersionString'],
               'build': info['CFBundleVersion'],
-              'minimum_ios': info['MinimumOSVersion'],
+              'minimum_ios': info.get('MinimumOSVersion', app_minimum_os),
+              'widget_minimum_ios': widget.get('MinimumOSVersion', widget_minimum_os),
               'platform': 'iPhoneOS',
               'configuration': 'Release',
               'widget_included': True,
