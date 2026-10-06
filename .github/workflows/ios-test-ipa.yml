@@ -69,7 +69,7 @@ jobs:
             ONLY_ACTIVE_ARCH=NO \
             2>&1 | tee build/logs/archive.log
 
-      - name: Preserve entitlements for re-signing and package the IPA
+      - name: Package unsigned IPA and preserve source entitlements
         id: package
         run: |
           set -euo pipefail
@@ -81,23 +81,10 @@ jobs:
           xcrun lipo -verify_arch arm64 "$APP/AndroidTVRemote"
           xcrun lipo -verify_arch arm64 "$EXTENSION/AndroidTVRemoteControls"
 
-          # Local ad-hoc signatures preserve the App Group entitlements so a
-          # sideloading tool can inspect and re-sign both bundles correctly.
-          # These are NOT Apple development/distribution signatures; the IPA
-          # cannot be installed until re-signed with valid provisioning.
-          while IFS= read -r -d '' library; do
-            codesign --force --sign - --timestamp=none "$library"
-          done < <(find "$APP" -type f -name '*.dylib' -print0)
-          while IFS= read -r -d '' framework; do
-            codesign --force --sign - --timestamp=none "$framework"
-          done < <(find "$APP" -depth -type d -name '*.framework' -print0)
-          codesign --force --sign - --timestamp=none --generate-entitlement-der \
-            --entitlements ios/AndroidTVRemoteControls/AndroidTVRemoteControls.entitlements \
-            "$EXTENSION"
-          codesign --force --sign - --timestamp=none --generate-entitlement-der \
-            --entitlements ios/AndroidTVRemote/AndroidTVRemote.entitlements \
-            "$APP"
-          codesign --verify --deep --strict --verbose=2 "$APP"
+          # This artifact is intentionally unsigned. Do not codesign or verify
+          # Apple signatures here: the app, extension and embedded frameworks
+          # will all be signed by the user's provisioning/sideloading tool.
+          # Preserve the source entitlements as sidecar files below.
 
           VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")
           NAME="GoogleTVRemote-${VERSION}-sleep-fix-${GITHUB_SHA:0:7}-unsigned"
@@ -147,7 +134,7 @@ jobs:
               'platform': 'iPhoneOS',
               'configuration': 'Release',
               'widget_included': True,
-              'signing': 'Local ad-hoc signatures only; re-sign app and widget with valid Apple provisioning before installation.',
+              'signing': 'Unsigned device build; sign app, widget and embedded frameworks with valid Apple provisioning before installation.',
               'physical_device_tested': False,
               'xcode': subprocess.check_output(['xcodebuild', '-version'], text=True).strip(),
           }
@@ -158,8 +145,8 @@ jobs:
               'This is an arm64 iPhone device IPA, not a Simulator build.\n'
               'It includes the app and AndroidTVRemoteControls widget extension.\n'
               'It is NOT Apple development/distribution signed and has no provisioning profile.\n'
-              'Local ad-hoc signatures preserve the original App Group entitlements for re-signing.\n'
-              'Re-sign and provision BOTH bundles before installation using your sideloading/signing tool.\n'
+              'Original App Group entitlements are provided in the accompanying entitlement plist files.\n'
+              'Sign and provision BOTH bundles and their embedded frameworks before installation.\n'
               'Keep a matching, provisioned App Group on both bundles for widget communication.\n'
               'No Apple account credentials, certificates or private keys were used.\n'
               'Release configuration retains the existing experimental Keep Ready feature.\n'
