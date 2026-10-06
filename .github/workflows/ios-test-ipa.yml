@@ -1,0 +1,205 @@
+name: iOS Test IPA
+
+on:
+  push:
+    branches:
+      - test/ios-1.0.3-sleep-fix
+    paths:
+      - ios/**
+      - .github/workflows/ios-test-ipa.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-test-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-ipa:
+    name: Build iOS device IPA (re-sign before installation)
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+    steps:
+      - name: Check out the triggering commit
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up XcodeGen and record toolchain
+        run: |
+          set -euo pipefail
+          mkdir -p build/logs build/artifacts
+          xcodebuild -version | tee build/logs/xcode-version.txt
+          xcrun swift --version | tee build/logs/swift-version.txt
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen --version | tee build/logs/xcodegen-version.txt
+
+      - name: Generate the Xcode project
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          xcodegen generate
+
+      - name: Archive the iPhone device app without Apple signing
+        run: |
+          set -euo pipefail
+          xcodebuild archive \
+            -project ios/AndroidTVRemote.xcodeproj \
+            -scheme AndroidTVRemote \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$PWD/build/AndroidTVRemote.xcarchive" \
+            -derivedDataPath "$PWD/build/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            ONLY_ACTIVE_ARCH=NO \
+            2>&1 | tee build/logs/archive.log
+
+      - name: Preserve entitlements for re-signing and package the IPA
+        id: package
+        run: |
+          set -euo pipefail
+          APP="$PWD/build/Payload/AndroidTVRemote.app"
+          mkdir -p build/Payload
+          ditto build/AndroidTVRemote.xcarchive/Products/Applications/AndroidTVRemote.app "$APP"
+          EXTENSION="$APP/PlugIns/AndroidTVRemoteControls.appex"
+          test -d "$EXTENSION"
+          xcrun lipo -verify_arch arm64 "$APP/AndroidTVRemote"
+          xcrun lipo -verify_arch arm64 "$EXTENSION/AndroidTVRemoteControls"
+
+          # Local ad-hoc signatures preserve the App Group entitlements so a
+          # sideloading tool can inspect and re-sign both bundles correctly.
+          # These are NOT Apple development/distribution signatures; the IPA
+          # cannot be installed until re-signed with valid provisioning.
+          while IFS= read -r -d '' library; do
+            codesign --force --sign - --timestamp=none "$library"
+          done < <(find "$APP" -type f -name '*.dylib' -print0)
+          while IFS= read -r -d '' framework; do
+            codesign --force --sign - --timestamp=none "$framework"
+          done < <(find "$APP" -depth -type d -name '*.framework' -print0)
+          codesign --force --sign - --timestamp=none --generate-entitlement-der \
+            --entitlements ios/AndroidTVRemoteControls/AndroidTVRemoteControls.entitlements \
+            "$EXTENSION"
+          codesign --force --sign - --timestamp=none --generate-entitlement-der \
+            --entitlements ios/AndroidTVRemote/AndroidTVRemote.entitlements \
+            "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")
+          NAME="GoogleTVRemote-${VERSION}-sleep-fix-${GITHUB_SHA:0:7}-unsigned"
+          export IPA_PATH="$PWD/build/artifacts/$NAME.ipa"
+          (cd build && /usr/bin/zip -qry "$IPA_PATH" Payload)
+          unzip -t "$IPA_PATH" > build/logs/ipa-validation.txt
+          echo "artifact_name=$NAME" >> "$GITHUB_OUTPUT"
+
+          cp ios/AndroidTVRemote/AndroidTVRemote.entitlements build/artifacts/app.entitlements.plist
+          cp ios/AndroidTVRemoteControls/AndroidTVRemoteControls.entitlements build/artifacts/widget.entitlements.plist
+          RESOLVED=ios/AndroidTVRemote.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+          if [ -f "$RESOLVED" ]; then
+            cp "$RESOLVED" build/artifacts/Package.resolved
+          fi
+          python3 - <<'PY'
+          import datetime
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import plistlib
+          import subprocess
+          import zipfile
+
+          ipa = pathlib.Path(os.environ['IPA_PATH'])
+          with zipfile.ZipFile(ipa) as archive:
+              info = plistlib.loads(archive.read('Payload/AndroidTVRemote.app/Info.plist'))
+              widget = plistlib.loads(archive.read('Payload/AndroidTVRemote.app/PlugIns/AndroidTVRemoteControls.appex/Info.plist'))
+              for bundle in (info, widget):
+                  assert bundle['CFBundleSupportedPlatforms'] == ['iPhoneOS'], bundle
+              assert info['CFBundleShortVersionString'] == widget['CFBundleShortVersionString']
+              assert info['CFBundleVersion'] == widget['CFBundleVersion']
+          digest = hashlib.sha256(ipa.read_bytes()).hexdigest()
+          manifest = {
+              'repository': os.environ['GITHUB_REPOSITORY'],
+              'branch': os.environ['GITHUB_REF_NAME'],
+              'commit': os.environ['GITHUB_SHA'],
+              'run_url': f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+              'created_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              'file': ipa.name,
+              'sha256': digest,
+              'bytes': ipa.stat().st_size,
+              'bundle_id': info['CFBundleIdentifier'],
+              'version': info['CFBundleShortVersionString'],
+              'build': info['CFBundleVersion'],
+              'minimum_ios': info['MinimumOSVersion'],
+              'platform': 'iPhoneOS',
+              'configuration': 'Release',
+              'widget_included': True,
+              'signing': 'Local ad-hoc signatures only; re-sign app and widget with valid Apple provisioning before installation.',
+              'physical_device_tested': False,
+              'xcode': subprocess.check_output(['xcodebuild', '-version'], text=True).strip(),
+          }
+          (ipa.parent / 'build-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+          (ipa.parent / 'SHA256SUMS.txt').write_text(f'{digest}  {ipa.name}\n')
+          (ipa.parent / 'README.txt').write_text(
+              'Google TV Remote - iOS 1.0.3 sleep-fix test build\n\n'
+              'This is an arm64 iPhone device IPA, not a Simulator build.\n'
+              'It includes the app and AndroidTVRemoteControls widget extension.\n'
+              'It is NOT Apple development/distribution signed and has no provisioning profile.\n'
+              'Local ad-hoc signatures preserve the original App Group entitlements for re-signing.\n'
+              'Re-sign and provision BOTH bundles before installation using your sideloading/signing tool.\n'
+              'Keep a matching, provisioned App Group on both bundles for widget communication.\n'
+              'No Apple account credentials, certificates or private keys were used.\n'
+              'Release configuration retains the existing experimental Keep Ready feature.\n'
+              'Build/package validation does not verify sleep behavior on a real TV.\n'
+              'See build-manifest.json, Package.resolved and SHA256SUMS.txt for provenance.\n'
+          )
+          print(json.dumps(manifest, indent=2))
+          PY
+
+      - name: Upload IPA and build provenance
+        id: upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.package.outputs.artifact_name }}
+          path: build/artifacts/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Write download summary
+        env:
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+        run: |
+          {
+            echo '## iOS sleep-fix IPA'
+            echo
+            echo "[Download IPA and build provenance]($ARTIFACT_URL)"
+            echo
+            echo "Source commit: \`$GITHUB_SHA\`"
+            echo
+            echo '**Re-sign before installation.** App and widget are included; no Apple signing credentials were used.'
+            echo
+            echo 'Compiled for a real iPhone (arm64). Physical iPhone/TV sleep behavior has not been tested by CI.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-test-build-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/logs/
+          if-no-files-found: warn
+          retention-days: 7
