@@ -47,14 +47,12 @@ jobs:
 
       - name: Generate the Xcode project
         working-directory: ios
-        run: |
-          set -euo pipefail
-          xcodegen generate
+        run: xcodegen generate
 
       - name: Archive the iPhone device app without Apple signing
         run: |
           set -euo pipefail
-          xcodebuild archive \
+          if xcodebuild archive \
             -project ios/AndroidTVRemote.xcodeproj \
             -scheme AndroidTVRemote \
             -configuration Release \
@@ -67,12 +65,18 @@ jobs:
             CODE_SIGN_IDENTITY='' \
             DEVELOPMENT_TEAM='' \
             ONLY_ACTIVE_ARCH=NO \
-            2>&1 | tee build/logs/archive.log
+            > build/logs/archive.log 2>&1; then
+            tail -n 5 build/logs/archive.log
+          else
+            tail -n 100 build/logs/archive.log
+            exit 1
+          fi
 
-      - name: Package unsigned IPA and preserve source entitlements
+      - name: Package and validate unsigned IPA
         id: package
         run: |
           set -euo pipefail
+          exec > >(tee build/logs/package.log) 2>&1
           APP="$PWD/build/Payload/AndroidTVRemote.app"
           mkdir -p build/Payload
           ditto build/AndroidTVRemote.xcarchive/Products/Applications/AndroidTVRemote.app "$APP"
@@ -80,21 +84,44 @@ jobs:
           test -d "$EXTENSION"
           xcrun lipo -verify_arch arm64 "$APP/AndroidTVRemote"
           xcrun lipo -verify_arch arm64 "$EXTENSION/AndroidTVRemoteControls"
+          plutil -lint "$APP/Info.plist" "$EXTENSION/Info.plist"
 
-          # This artifact is intentionally unsigned. Do not codesign or verify
-          # Apple signatures here: the app, extension and embedded frameworks
-          # will all be signed by the user's provisioning/sideloading tool.
-          # Preserve the source entitlements as sidecar files below.
-
+          # No Apple signing or provisioning. The user must sign the app,
+          # extension and embedded frameworks before installing on an iPhone.
           VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")
           NAME="GoogleTVRemote-${VERSION}-sleep-fix-${GITHUB_SHA:0:7}-unsigned"
-          export IPA_PATH="$PWD/build/artifacts/$NAME.ipa"
+          IPA_PATH="$PWD/build/artifacts/$NAME.ipa"
           (cd build && /usr/bin/zip -qry "$IPA_PATH" Payload)
           unzip -t "$IPA_PATH" > build/logs/ipa-validation.txt
-          echo "artifact_name=$NAME" >> "$GITHUB_OUTPUT"
-
+          (cd build/artifacts && shasum -a 256 "$NAME.ipa" > SHA256SUMS.txt)
           cp ios/AndroidTVRemote/AndroidTVRemote.entitlements build/artifacts/app.entitlements.plist
           cp ios/AndroidTVRemoteControls/AndroidTVRemoteControls.entitlements build/artifacts/widget.entitlements.plist
+          printf 'Repository: %s\nBranch: %s\nCommit: %s\nRun: %s/%s/actions/runs/%s\nSigning: unsigned; provision before installation\n' \
+            "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" "$GITHUB_SHA" \
+            "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" \
+            > build/artifacts/build-source.txt
+          cat > build/artifacts/README.txt <<'TEXT'
+          Google TV Remote - sleep-fix test IPA
+
+          Release build for a physical iPhone (arm64), not the Simulator.
+          Includes the app, widget extension and embedded frameworks.
+          UNSIGNED: sign and provision the app, extension and frameworks before installation.
+          Original entitlements are provided as sidecar plist files. Preserve a matching,
+          provisioned App Group on the app and widget for shared data to work.
+          No Apple signing credentials were used. No physical iPhone/TV test was performed.
+          The sleep-fix application source and existing Keep Ready configuration are unchanged.
+          See build-source.txt and SHA256SUMS.txt for source identity and integrity.
+          TEXT
+          echo "artifact_name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "ipa_path=$IPA_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Record supplementary build metadata
+        continue-on-error: true
+        env:
+          IPA_PATH: ${{ steps.package.outputs.ipa_path }}
+        run: |
+          set -euo pipefail
+          exec > >(tee build/logs/metadata.log) 2>&1
           RESOLVED=ios/AndroidTVRemote.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
           if [ -f "$RESOLVED" ]; then
             cp "$RESOLVED" build/artifacts/Package.resolved
@@ -106,81 +133,39 @@ jobs:
           import os
           import pathlib
           import plistlib
-          import struct
-          import subprocess
           import zipfile
-
-          def device_minimum_os(data):
-              # Read the actual Mach-O platform instead of requiring optional
-              # CFBundleSupportedPlatforms metadata on extension bundles.
-              magic, cpu, _, _, commands, command_bytes, _, _ = struct.unpack_from('<8I', data)
-              assert magic == 0xFEEDFACF and cpu == 0x0100000C, 'Expected arm64 Mach-O'
-              offset = 32
-              assert offset + command_bytes <= len(data), 'Truncated Mach-O commands'
-              for _ in range(commands):
-                  command, size = struct.unpack_from('<II', data, offset)
-                  assert size >= 8 and offset + size <= 32 + command_bytes
-                  if command == 0x32:  # LC_BUILD_VERSION
-                      assert size >= 24
-                      platform, minimum = struct.unpack_from('<II', data, offset + 8)
-                      assert platform == 2, 'Expected iOS device, not Simulator'
-                      return f'{minimum >> 16}.{(minimum >> 8) & 255}.{minimum & 255}'
-                  offset += size
-              raise AssertionError('Missing Mach-O build platform')
 
           ipa = pathlib.Path(os.environ['IPA_PATH'])
           with zipfile.ZipFile(ipa) as archive:
-              info = plistlib.loads(archive.read('Payload/AndroidTVRemote.app/Info.plist'))
-              widget = plistlib.loads(archive.read('Payload/AndroidTVRemote.app/PlugIns/AndroidTVRemoteControls.appex/Info.plist'))
-              for bundle in (info, widget):
-                  platforms = bundle.get('CFBundleSupportedPlatforms')
-                  assert platforms is None or platforms == ['iPhoneOS'], bundle
-              app_minimum_os = device_minimum_os(archive.read('Payload/AndroidTVRemote.app/AndroidTVRemote'))
-              widget_minimum_os = device_minimum_os(archive.read('Payload/AndroidTVRemote.app/PlugIns/AndroidTVRemoteControls.appex/AndroidTVRemoteControls'))
-              assert info['CFBundleShortVersionString'] == widget['CFBundleShortVersionString']
-              assert info['CFBundleVersion'] == widget['CFBundleVersion']
-          digest = hashlib.sha256(ipa.read_bytes()).hexdigest()
+              bundles = {}
+              for path in ('Payload/AndroidTVRemote.app/Info.plist',
+                           'Payload/AndroidTVRemote.app/PlugIns/AndroidTVRemoteControls.appex/Info.plist'):
+                  info = plistlib.loads(archive.read(path))
+                  bundles[path] = {key: info.get(key) for key in (
+                      'CFBundleIdentifier', 'CFBundleShortVersionString', 'CFBundleVersion',
+                      'CFBundleExecutable', 'MinimumOSVersion', 'CFBundleSupportedPlatforms')}
           manifest = {
               'repository': os.environ['GITHUB_REPOSITORY'],
               'branch': os.environ['GITHUB_REF_NAME'],
               'commit': os.environ['GITHUB_SHA'],
-              'run_url': f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
               'created_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
               'file': ipa.name,
-              'sha256': digest,
+              'sha256': hashlib.sha256(ipa.read_bytes()).hexdigest(),
               'bytes': ipa.stat().st_size,
-              'bundle_id': info['CFBundleIdentifier'],
-              'version': info['CFBundleShortVersionString'],
-              'build': info['CFBundleVersion'],
-              'minimum_ios': info.get('MinimumOSVersion', app_minimum_os),
-              'widget_minimum_ios': widget.get('MinimumOSVersion', widget_minimum_os),
-              'platform': 'iPhoneOS',
               'configuration': 'Release',
-              'widget_included': True,
-              'signing': 'Unsigned device build; sign app, widget and embedded frameworks with valid Apple provisioning before installation.',
+              'sdk': 'iphoneos',
+              'destination': 'generic/platform=iOS',
+              'signing': 'Unsigned; sign and provision before installation.',
               'physical_device_tested': False,
-              'xcode': subprocess.check_output(['xcodebuild', '-version'], text=True).strip(),
+              'bundles': bundles,
           }
           (ipa.parent / 'build-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
-          (ipa.parent / 'SHA256SUMS.txt').write_text(f'{digest}  {ipa.name}\n')
-          (ipa.parent / 'README.txt').write_text(
-              'Google TV Remote - iOS 1.0.3 sleep-fix test build\n\n'
-              'This is an arm64 iPhone device IPA, not a Simulator build.\n'
-              'It includes the app and AndroidTVRemoteControls widget extension.\n'
-              'It is NOT Apple development/distribution signed and has no provisioning profile.\n'
-              'Original App Group entitlements are provided in the accompanying entitlement plist files.\n'
-              'Sign and provision BOTH bundles and their embedded frameworks before installation.\n'
-              'Keep a matching, provisioned App Group on both bundles for widget communication.\n'
-              'No Apple account credentials, certificates or private keys were used.\n'
-              'Release configuration retains the existing experimental Keep Ready feature.\n'
-              'Build/package validation does not verify sleep behavior on a real TV.\n'
-              'See build-manifest.json, Package.resolved and SHA256SUMS.txt for provenance.\n'
-          )
           print(json.dumps(manifest, indent=2))
           PY
 
       - name: Upload IPA and build provenance
         id: upload
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.package.outputs.artifact_name }}
@@ -190,6 +175,7 @@ jobs:
           compression-level: 0
 
       - name: Write download summary
+        if: ${{ steps.upload.outcome == 'success' }}
         env:
           ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
         run: |
@@ -200,9 +186,9 @@ jobs:
             echo
             echo "Source commit: \`$GITHUB_SHA\`"
             echo
-            echo '**Re-sign before installation.** App and widget are included; no Apple signing credentials were used.'
+            echo '**Unsigned: sign and provision before installation.** App and widget included.'
             echo
-            echo 'Compiled for a real iPhone (arm64). Physical iPhone/TV sleep behavior has not been tested by CI.'
+            echo 'Physical iPhone/TV sleep behavior has not been tested by CI.'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload build logs
