@@ -82,8 +82,8 @@ jobs:
           ditto build/AndroidTVRemote.xcarchive/Products/Applications/AndroidTVRemote.app "$APP"
           EXTENSION="$APP/PlugIns/AndroidTVRemoteControls.appex"
           test -d "$EXTENSION"
-          xcrun lipo -verify_arch arm64 "$APP/AndroidTVRemote"
-          xcrun lipo -verify_arch arm64 "$EXTENSION/AndroidTVRemoteControls"
+          xcrun lipo "$APP/AndroidTVRemote" -verify_arch arm64
+          xcrun lipo "$EXTENSION/AndroidTVRemoteControls" -verify_arch arm64
           plutil -lint "$APP/Info.plist" "$EXTENSION/Info.plist"
 
           # No Apple signing or provisioning. The user must sign the app,
