@@ -75,7 +75,7 @@ enum WidgetRemoteBridgeError: LocalizedError {
         case .appGroupUnavailable:
             String(localized: "The TV remote is unavailable. Open the app and try again.")
         case .commandNotDelivered:
-            String(localized: "The TV is not connected. Open the app to reconnect.")
+            String(localized: "Open TV Remote, connect to your TV, and enable Keep Ready to use background controls.")
         }
     }
 }
@@ -83,6 +83,9 @@ enum WidgetRemoteBridgeError: LocalizedError {
 enum WidgetRemoteBridge {
     static let heartbeatInterval: TimeInterval = 60
     static let leaseDuration: TimeInterval = 5 * 60
+    // Align queue expiry with the acknowledgement timeout. Old lock-screen
+    // taps must not replay when the main app resumes after a timeout.
+    static let commandLifetime: TimeInterval = 1
     static let appGroupIdentifier = "group.dev.local.AndroidTVRemote"
     static let widgetKind = "dev.local.AndroidTVRemote.homeRemote"
     static let notificationName = CFNotificationName(
@@ -116,14 +119,25 @@ enum WidgetRemoteBridge {
         let directory = try commandsDirectory()
         try FileManager.default.createDirectory(
             at: directory,
-            withIntermediateDirectories: true
+            withIntermediateDirectories: true,
+            attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
+        )
+        // Also migrate an existing directory created by an older app version.
+        try FileManager.default.setAttributes(
+            [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+            ofItemAtPath: directory.path
         )
 
         let id = UUID()
         let envelope = WidgetRemoteCommandEnvelope(id: id, command: command, createdAt: Date())
         let stagingURL = directory.appendingPathComponent("\(id.uuidString).writing")
         let fileURL = directory.appendingPathComponent("\(id.uuidString).json")
-        try JSONEncoder().encode(envelope).write(to: stagingURL)
+        // Only transient commands/acknowledgements use this protection class;
+        // pairing keys and certificates remain in the existing identity store.
+        try JSONEncoder().encode(envelope).write(
+            to: stagingURL,
+            options: .completeFileProtectionUntilFirstUserAuthentication
+        )
         try FileManager.default.moveItem(at: stagingURL, to: fileURL)
 
         CFNotificationCenterPostNotification(
@@ -136,7 +150,16 @@ enum WidgetRemoteBridge {
         return id
     }
 
-    static func takePendingCommands(maxAge: TimeInterval = 3) -> [PendingWidgetRemoteCommand] {
+    static func isFreshCommand(
+        createdAt: Date,
+        at date: Date,
+        maxAge: TimeInterval = commandLifetime
+    ) -> Bool {
+        let age = date.timeIntervalSince(createdAt)
+        return age >= 0 && age < maxAge
+    }
+
+    static func takePendingCommands(maxAge: TimeInterval = commandLifetime) -> [PendingWidgetRemoteCommand] {
         guard let directory = try? commandsDirectory(),
               let files = try? FileManager.default.contentsOfDirectory(
                   at: directory,
@@ -155,7 +178,7 @@ enum WidgetRemoteBridge {
                           WidgetRemoteCommandEnvelope.self,
                           from: data
                       ),
-                      now.timeIntervalSince(envelope.createdAt) <= maxAge else {
+                      isFreshCommand(createdAt: envelope.createdAt, at: now, maxAge: maxAge) else {
                     return nil
                 }
                 return envelope
@@ -170,13 +193,16 @@ enum WidgetRemoteBridge {
         let directory = try commandsDirectory()
         let stagingURL = directory.appendingPathComponent("\(id.uuidString).ack-writing")
         let acknowledgementURL = directory.appendingPathComponent("\(id.uuidString).ack")
-        try Data().write(to: stagingURL)
+        try Data().write(
+            to: stagingURL,
+            options: .completeFileProtectionUntilFirstUserAuthentication
+        )
         try FileManager.default.moveItem(at: stagingURL, to: acknowledgementURL)
     }
 
     static func waitForAcknowledgement(
         _ id: UUID,
-        timeout: TimeInterval = 1
+        timeout: TimeInterval = commandLifetime
     ) async -> Bool {
         guard let directory = try? commandsDirectory() else { return false }
         let acknowledgementURL = directory.appendingPathComponent("\(id.uuidString).ack")
@@ -206,9 +232,7 @@ enum WidgetRemoteBridge {
     static func removeAcknowledgement(_ id: UUID) {
         guard let directory = try? commandsDirectory() else { return }
         ["ack", "ack-writing"].forEach { pathExtension in
-            let fileURL = directory.appendingPathComponent(
-                "\(id.uuidString).\(pathExtension)"
-            )
+            let fileURL = directory.appendingPathComponent("\(id.uuidString).\(pathExtension)")
             try? FileManager.default.removeItem(at: fileURL)
         }
     }

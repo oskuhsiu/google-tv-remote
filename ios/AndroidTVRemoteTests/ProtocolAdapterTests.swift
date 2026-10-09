@@ -1,3 +1,4 @@
+import AppIntents
 import Foundation
 import Security
 import SwiftProtobuf
@@ -174,5 +175,62 @@ private final class RecordingSink: @unchecked Sendable {
         lock.lock()
         storage.append(frame)
         lock.unlock()
+    }
+}
+
+// Kept in an existing test source so both the checked-in Xcode project and
+// XcodeGen discover these tests without requiring project regeneration.
+final class LockScreenRemoteTests: XCTestCase {
+    func testLockScreenCommandAllowListExcludesPowerAndPairing() {
+        XCTAssertEqual(Set(WidgetRemoteCommand.allCases.map(\.rawValue)), [
+            "up", "down", "left", "right", "select", "back", "home"
+        ])
+    }
+
+    func testLockScreenCommandsRoundTripAndHaveControlMetadata() throws {
+        for command in WidgetRemoteCommand.allCases {
+            let data = try JSONEncoder().encode(command)
+            XCTAssertEqual(try JSONDecoder().decode(WidgetRemoteCommand.self, from: data), command)
+            XCTAssertNotNil(WidgetRemoteCommand.caseDisplayRepresentations[command])
+            XCTAssertFalse(command.symbolName.isEmpty)
+        }
+    }
+
+    func testCommandExpiresAtAcknowledgementDeadline() {
+        let createdAt = Date(timeIntervalSince1970: 1_000)
+        XCTAssertTrue(WidgetRemoteBridge.isFreshCommand(createdAt: createdAt, at: createdAt))
+        XCTAssertTrue(WidgetRemoteBridge.isFreshCommand(
+            createdAt: createdAt, at: createdAt.addingTimeInterval(0.999)
+        ))
+        XCTAssertFalse(WidgetRemoteBridge.isFreshCommand(
+            createdAt: createdAt, at: createdAt.addingTimeInterval(WidgetRemoteBridge.commandLifetime)
+        ))
+        XCTAssertFalse(WidgetRemoteBridge.isFreshCommand(
+            createdAt: createdAt, at: createdAt.addingTimeInterval(3)
+        ))
+    }
+
+    func testFutureDatedOrInvalidLifetimeCommandsAreRejected() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        XCTAssertFalse(WidgetRemoteBridge.isFreshCommand(
+            createdAt: now.addingTimeInterval(1), at: now
+        ))
+        XCTAssertFalse(WidgetRemoteBridge.isFreshCommand(createdAt: now, at: now, maxAge: 0))
+        XCTAssertFalse(WidgetRemoteBridge.isFreshCommand(createdAt: now, at: now, maxAge: -1))
+    }
+
+    func testDirectIntentDoesNotOpenAppAndPreservesConfiguredCommand() {
+        XCTAssertFalse(SendWidgetRemoteCommandIntent.openAppWhenRun)
+        XCTAssertEqual(SendWidgetRemoteCommandIntent(command: .back).command, .back)
+        XCTAssertEqual(TVCommandControlConfiguration().command, .select)
+    }
+
+    func testConnectingAndExpiredSnapshotsCannotAdvertiseReady() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        XCTAssertFalse(WidgetRemoteSnapshot(tvName: "TV", availability: .connecting).isReady)
+        XCTAssertFalse(WidgetRemoteSnapshot.unavailable.isReady)
+        let ready = WidgetRemoteSnapshot(tvName: "TV", availability: .ready, confirmedAt: now)
+        XCTAssertTrue(ready.validated(at: now.addingTimeInterval(299)).isReady)
+        XCTAssertFalse(ready.validated(at: now.addingTimeInterval(300)).isReady)
     }
 }
