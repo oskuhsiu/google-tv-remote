@@ -6,6 +6,7 @@ import WidgetKit
 struct AndroidTVRemoteControlsBundle: WidgetBundle {
     var body: some Widget {
         RemoteControl()
+        TVCommandControl()
         RemoteWidget()
     }
 }
